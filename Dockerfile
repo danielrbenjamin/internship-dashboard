@@ -14,7 +14,9 @@ RUN groupadd -g 10001 dashboard && useradd -u 10001 -g 10001 -m dashboard \
 COPY pyproject.toml ./
 COPY backend ./backend
 RUN pip install --no-cache-dir .
-RUN apt-get update && apt-get install -y --no-install-recommends texlive-latex-extra texlive-fonts-recommended \
+RUN apt-get update && apt-get install -y --no-install-recommends \
+        texlive-latex-extra texlive-fonts-recommended texlive-fonts-extra \
+    && kpsewhich XCharter.sty \
     && rm -rf /var/lib/apt/lists/*
 
 FROM base AS app
