@@ -36,7 +36,10 @@ def install_referrals(app, db, settings):
                           team: str = Query(default="", max_length=120)):
         if not company.strip():
             raise HTTPException(422, "Enter an employer.")
-        return await search_people(settings.exa_api_key, company.strip(), team.strip())
+        profile = db.settings(owner)
+        return await search_people(settings.exa_api_key, company.strip(), team.strip(),
+                                   profile.get("referral_school", ""), profile.get("referral_experience", ""),
+                                   profile.get("referral_priority", "team"))
 
     @app.get("/api/owner/referrals")
     def listings(owner: Owner):

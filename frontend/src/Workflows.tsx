@@ -1,17 +1,18 @@
-import {CodexHint} from "./CodexConnection";
+import {AIBadge, CodexHint} from "./CodexConnection";
 import {BriefcaseBusiness} from "lucide-react";
 import {PageHeader} from "./PageHeader";
 import {useEffect, useRef, useState} from "react";
 import {api, type Application} from "./api";
 
 type Prefs = {auto_shortlist:boolean; draft:boolean; threshold:number;smart:boolean;prepare:boolean;max_experience_years:number;reject_no_sponsorship:boolean;minimum_annual_pay:number};
-type Screen = {reviews:{id:string;title:string;company:string;verdict:"apply"|"review"|"skip";score:number|null;summary:string}[];preferences:Prefs; roles:{id:string;title:string;company:string;location:string;score:number;reasons:string[]}[]};
-export function Screening({open, settings, materials, codexReady, connectCodex}: {codexReady: boolean; connectCodex: () => void; materials:(id:string)=>void;open:(id:string)=>void; settings:()=>void}) {
+type Screen = {reviews:{id:string;title:string;company:string;verdict:"apply"|"review"|"skip";score:number|null;summary:string;matched_skills?:string[]}[];preferences:Prefs; roles:{id:string;title:string;company:string;location:string;score:number;reasons:string[];matched_skills?:string[]}[]};
+export function Screening({open, settings, editSkills, materials, codexReady, connectCodex}: {codexReady: boolean; connectCodex: () => void; materials:(id:string)=>void;open:(id:string)=>void; settings:()=>void; editSkills:()=>void}) {
   const preferencesDialog = useRef<HTMLDialogElement>(null);
   const [preferencesError, setPreferencesError] = useState("");
   const [data,setData] = useState<Screen>();
   const [error,setError] = useState("");
   const [busy,setBusy] = useState(false);
+  const [mode, setMode] = useState<"none" | "draft" | "screen">("none");
   const load = () => api<Screen>("/api/owner/screening").then(setData);
   useEffect(()=>{
     const refresh=()=>load().catch(e=>setError(e.message));
@@ -25,7 +26,7 @@ export function Screening({open, settings, materials, codexReady, connectCodex}:
     setBusy(true);
     setPreferencesError("");
     try {
-      await api("/api/owner/screening","PUT",{auto_shortlist:form.has("auto"),draft:codexReady ? form.has("draft") : data?.preferences.draft ?? false,threshold:Number(form.get("threshold")),smart:codexReady ? form.has("smart") : data?.preferences.smart ?? false,prepare:codexReady ? form.has("prepare") : data?.preferences.prepare ?? false,
+      await api("/api/owner/screening","PUT",{auto_shortlist:form.has("auto"),draft:mode === "draft",threshold:Number(form.get("threshold")),smart:mode === "screen",prepare:mode === "screen" && (codexReady ? form.has("prepare") : data?.preferences.prepare ?? false),
         max_experience_years:Number(form.get("experience")),reject_no_sponsorship:form.has("sponsorship"),minimum_annual_pay:Number(form.get("annualPay"))});
       await load();
       preferencesDialog.current?.close();
@@ -36,8 +37,10 @@ export function Screening({open, settings, materials, codexReady, connectCodex}:
     <PageHeader title="Where to apply" />
     <div className="jobs-toolbar">
       <button onClick={settings}>Edit saved searches</button>
+      <button onClick={editSkills}>Edit skills</button>
       <button disabled={!data} onClick={() => {
         setPreferencesError("");
+        setMode(data?.preferences.smart ? "screen" : data?.preferences.draft ? "draft" : "none");
         preferencesDialog.current?.querySelector("form")?.reset();
         preferencesDialog.current?.showModal();
       }}>Screening preferences</button>
@@ -46,15 +49,27 @@ export function Screening({open, settings, materials, codexReady, connectCodex}:
     {data && <><dialog ref={preferencesDialog} className="screening-settings" aria-labelledby="screening-heading">
       <h2 id="screening-heading">Screening preferences</h2>
       <form onSubmit={save}>
-      <label className="checkbox"><input name="auto" type="checkbox" defaultChecked={data.preferences.auto_shortlist}/> Save qualifying roles</label>
-      <label>Minimum score out of 100<input name="threshold" type="number" min="50" max="100" required defaultValue={data.preferences.threshold}/></label>
-      <label className="checkbox"><input name="draft" type="checkbox" disabled={!codexReady} defaultChecked={data.preferences.draft}/> Queue a Codex review and cover letter for each new shortlist match</label>
-      <label className="checkbox"><input name="smart" type="checkbox" disabled={!codexReady} defaultChecked={data.preferences.smart}/> Screen shortlisted roles with Codex for a fit score and verdict</label>
-      <label className="checkbox"><input name="prepare" type="checkbox" disabled={!codexReady} defaultChecked={data.preferences.prepare}/> Build and check both PDFs for strong Apply verdicts</label>
+      <fieldset><legend>Shortlist</legend>
+        <label className="checkbox"><input name="auto" type="checkbox" defaultChecked={data.preferences.auto_shortlist}/> Automatically save qualifying roles</label>
+        <label>Minimum score out of 100<input name="threshold" type="number" min="50" max="100" required defaultValue={data.preferences.threshold}/></label>
+        <p className="muted">Tern scores openings using your saved searches, watchlist, and skills.</p>
+      </fieldset>
+      <fieldset><legend>After a role is shortlisted</legend>
+        <label className="checkbox"><input name="review-mode" type="radio" checked={mode === "none"}
+          onChange={() => setMode("none")} /> Save only</label>
+        <label className="checkbox"><input name="review-mode" type="radio" checked={mode === "draft"}
+          disabled={!codexReady} onChange={() => setMode("draft")} /> Review the role and draft a cover letter <AIBadge /></label>
+        <label className="checkbox"><input name="review-mode" type="radio" checked={mode === "screen"}
+          disabled={!codexReady} onChange={() => setMode("screen")} /> Score fit and give a verdict <AIBadge /></label>
+        <label className="checkbox"><input name="prepare" type="checkbox" disabled={!codexReady || mode !== "screen"}
+          defaultChecked={data.preferences.prepare}/> Build and check both PDFs when Codex says Apply and meets the minimum score <AIBadge /></label>
+      </fieldset>
       {!codexReady && <CodexHint connect={() => {preferencesDialog.current?.close(); connectCodex();}} />}
+      <fieldset><legend>Limits for Codex screening</legend>
       <label>Maximum experience required (0 for any)<input name="experience" type="number" min="0" max="20" defaultValue={data.preferences.max_experience_years}/></label>
       <label className="checkbox"><input name="sponsorship" type="checkbox" defaultChecked={data.preferences.reject_no_sponsorship}/> Exclude explicit no-sponsorship and citizenship-only postings during screening</label>
       <label>Minimum listed annual pay (0 for any)<input name="annualPay" type="number" min="0" max="1000000" defaultValue={data.preferences.minimum_annual_pay}/></label>
+      </fieldset>
       {preferencesError && <p role="alert">{preferencesError}</p>}
       <div className="screening-actions">
         <button type="button" onClick={() => preferencesDialog.current?.close()}>Close</button>
@@ -65,7 +80,8 @@ export function Screening({open, settings, materials, codexReady, connectCodex}:
         <div className="feed-head"><h2>Screened roles</h2><span>Verdict</span></div>
         {data.reviews.map(review => <button className="job" key={review.id} onClick={() => materials(review.id)}>
           <BriefcaseBusiness className="job-icon" size={17} aria-hidden="true" />
-          <span className="job-copy"><strong>{review.title}</strong><span>{review.company}{review.summary && " · " + review.summary}</span></span>
+          <span className="job-copy"><strong>{review.title}</strong><span>{review.company}{review.summary && " · " + review.summary}</span>
+            {!!review.matched_skills?.length && <span>Matched skills · {review.matched_skills.join(", ")}</span>}</span>
           <span className="row-meta">{{apply:"Apply",review:"Apply with risk",skip:"Skip"}[review.verdict]}{review.score != null && " · " + review.score + "/100"}</span>
         </button>)}
       </section>}
@@ -76,7 +92,8 @@ export function Screening({open, settings, materials, codexReady, connectCodex}:
         </div>}
         {data.roles.map(role => <button key={role.id} className="job" onClick={() => open(role.id)}>
           <BriefcaseBusiness className="job-icon" size={17} aria-hidden="true" />
-          <span className="job-copy"><strong>{role.title}</strong><span>{[role.company, role.location, ...role.reasons].filter(Boolean).join(" · ")}</span></span>
+          <span className="job-copy"><strong>{role.title}</strong><span>{[role.company, role.location, ...role.reasons].filter(Boolean).join(" · ")}</span>
+            {!!role.matched_skills?.length && <span>Matched skills · {role.matched_skills.join(", ")}</span>}</span>
           <span className="row-meta">{role.score}/100</span>
         </button>)}
       </section>

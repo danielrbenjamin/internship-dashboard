@@ -1,6 +1,6 @@
 
 from datetime import date
-from typing import Literal
+from typing import Annotated, Literal
 
 from pydantic import BaseModel, ConfigDict, Field
 
@@ -20,10 +20,24 @@ class Search(Input):
     alerts: bool = True
 
 
+class ScoringWeights(Input):
+    saved_search: int = Field(50, ge=0, le=100)
+    watchlist: int = Field(50, ge=0, le=100)
+    search_detail: int = Field(15, ge=0, le=100)
+    search_detail_cap: int = Field(50, ge=0, le=100)
+    skill: int = Field(10, ge=0, le=100)
+    skill_cap: int = Field(30, ge=0, le=100)
+
+
 class OwnerSettings(Input):
     watchlist: list[str] = Field(default_factory=list, max_length=60)
     searches: list[Search] = Field(default_factory=list, max_length=30)
     experience: str = Field(default="", max_length=24000)
+    skills: list[Annotated[str, Field(min_length=1, max_length=100)]] = Field(default_factory=list, max_length=60)
+    scoring: ScoringWeights = Field(default_factory=ScoringWeights)
+    referral_school: str = Field(default="", max_length=120)
+    referral_experience: str = Field(default="", max_length=240)
+    referral_priority: Literal["team", "school", "experience"] = "team"
     cover_repo: str = Field(default="",max_length=160,pattern=r"^([\w.-]+/[\w.-]+)?$")
     cover_branch: str = Field(default="main",min_length=1,max_length=100)
     cover_entry: str = Field(default="cover-letter.tex",min_length=5,max_length=200)
