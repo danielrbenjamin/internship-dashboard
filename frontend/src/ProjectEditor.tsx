@@ -1,20 +1,30 @@
 /// <reference types="vite/client" />
 import {useEffect, useLayoutEffect, useRef, useState, type CSSProperties} from "react";
-import {FolderTree, Maximize2, Minimize2, PanelRight} from "lucide-react";
+import {Crosshair, FolderTree, Maximize2, Minimize2, PanelRight} from "lucide-react";
 import {AIBadge, CodexHint} from "./CodexConnection";
 import {PaneDivider} from "./PaneDivider";
 import * as monaco from "monaco-editor";
 import Worker from "monaco-editor/editor/editor.worker.js?worker";
 import {useTheme} from "./Theme";
-import {api, assetHref, type Task,type Document} from "./api";
+import {api, type Task,type Document} from "./api";
+import {LatexPdf, type PdfPosition} from "./LatexPdf";
 import {demoMode} from "./Routes";
 
 self.MonacoEnvironment={getWorker:()=>new Worker()};
 monaco.languages.register({id:"latex"});
+monaco.languages.setLanguageConfiguration("latex", {
+  comments: {lineComment: "%"},
+  brackets: [["{", "}"], ["[", "]"], ["(", ")"]],
+  autoClosingPairs: [{open: "{", close: "}", notIn: ["comment"]}, {open: "[", close: "]", notIn: ["comment"]}],
+  indentationRules: {increaseIndentPattern: /^\s*\\begin\{[^}]+\}(?!.*\\end\{)/,
+    decreaseIndentPattern: /^\s*\\end\{/},
+  folding: {markers: {start: /^\s*\\begin\{[^}]+\}(?!.*\\end\{)/, end: /^\s*\\end\{/}},
+});
 monaco.languages.setMonarchTokensProvider("latex",{tokenizer:{root:[[/%.*/,"comment"],[/\\[a-zA-Z@]+/,"keyword"],[/[{}]/,"delimiter.bracket"],[/\$.+?\$/,"string"]]}});
 type Entry={path:string;editable:boolean};
 type Checks={pages:number|null;overfull:number};
-type Source={name:string;content:string;tree:Entry[];ancestors?:string[];checks?:Checks|null;parent?:string|null};
+type Source={name:string;content:string;tree:Entry[];ancestors?:string[];checks?:Checks|null;parent?:string|null;sync?:boolean|null};
+type SourcePosition = {name: string; line: number; column: number};
 type Proposal={key:string;before:string;after:string};
 function Files({entries,prefix="",select,active}:{entries:Entry[];prefix?:string;select:(p:string)=>void;active:string}){
   const dirs=new Set(entries.filter(e=>e.path.startsWith(prefix)).map(e=>e.path.slice(prefix.length).split("/")).filter(p=>p.length>1).map(p=>p[0]));
@@ -22,11 +32,22 @@ function Files({entries,prefix="",select,active}:{entries:Entry[];prefix?:string
     {entries.filter(e=>e.path.startsWith(prefix)&&!e.path.slice(prefix.length).includes("/")).map(e=><button key={e.path} type="button" disabled={!e.editable} title={e.path} aria-current={active===e.path?"page":undefined} onClick={()=>select(e.path)}>{e.path.slice(prefix.length)}</button>)}</>;
 }
 
-function Code({text,proposed,onChange}:{text:string;proposed?:string;onChange:(v:string)=>void}){
+function Code({text, proposed, busy, jump, onChange, onReady, onCompile, onShowPdf}: {
+  text: string;
+  proposed?: string;
+  busy: boolean;
+  jump?: SourcePosition;
+  onChange: (value: string) => void;
+  onReady: (editor: monaco.editor.IStandaloneCodeEditor | null) => void;
+  onCompile: () => void;
+  onShowPdf: () => void;
+}){
   const {dark} = useTheme();
   useEffect(() => {monaco.editor.setTheme(dark ? "vs-dark" : "vs");}, [dark]);
   const host=useRef<HTMLDivElement>(null);
-  const cb=useRef(onChange);cb.current=onChange;
+  const actions = useRef({onChange, onReady, onCompile, onShowPdf});
+  actions.current = {onChange, onReady, onCompile, onShowPdf};
+  const editing = useRef<monaco.editor.IStandaloneCodeEditor | null>(null);
   const model=useRef<monaco.editor.ITextModel|null>(null);
   useEffect(()=>{
     if(!host.current)return;
@@ -42,10 +63,30 @@ function Code({text,proposed,onChange}:{text:string;proposed?:string;onChange:(v
       return ()=>{editor.dispose();modified.dispose();original.dispose();model.current=null;};
     }
     const editor=monaco.editor.create(host.current,{...options,model:original});
-    const subscription=editor.onDidChangeModelContent(()=>cb.current(original.getValue()));
-    return ()=>{subscription.dispose();editor.dispose();original.dispose();model.current=null;};
+    editing.current = editor;
+    actions.current.onReady(editor);
+    editor.addAction({id: "tern.compile", label: "Recompile PDF", keybindings: [monaco.KeyMod.CtrlCmd | monaco.KeyMod.Alt | monaco.KeyCode.KeyB],
+      run: () => actions.current.onCompile()});
+    editor.addAction({id: "tern.showPdf", label: "Show in PDF", keybindings: [monaco.KeyMod.CtrlCmd | monaco.KeyMod.Alt | monaco.KeyCode.KeyJ],
+      run: () => actions.current.onShowPdf()});
+    const subscription=editor.onDidChangeModelContent(()=>actions.current.onChange(original.getValue()));
+    return ()=>{
+      actions.current.onReady(null);
+      editing.current = null;
+      subscription.dispose();editor.dispose();original.dispose();model.current=null;
+    };
   },[proposed]);
   useEffect(()=>{if(model.current&&model.current.getValue()!==text)model.current.setValue(text);},[text]);
+  useEffect(() => {editing.current?.updateOptions({readOnly: busy});}, [busy, proposed]);
+  useEffect(() => {
+    const editor = editing.current;
+    if (!jump || !editor) return;
+    const position = editor.getModel()?.validatePosition({lineNumber: jump.line, column: jump.column});
+    if (!position) return;
+    editor.setPosition(position);
+    editor.revealPositionInCenter(position);
+    editor.focus();
+  }, [jump, proposed]);
   return <div className="codepane" ref={host}/>;
 }
 
@@ -133,6 +174,12 @@ export default function ProjectEditor({doc,tasks,onVersion,suggest,codexReady=fa
   const [busy,setBusy]=useState(false),[message,setMessage]=useState("");
   const [latestChecks,setChecks]=useState<Checks|null>();
   const checks=latestChecks??source?.checks;
+  const exceedsOnePage = (checks?.pages ?? 0) > 1;
+  const [latestSync, setLatestSync] = useState<boolean | null>();
+  const [pdfTarget, setPdfTarget] = useState<PdfPosition>();
+  const [sourceTarget, setSourceTarget] = useState<SourcePosition>();
+  const syncRequest = useRef<AbortController | null>(null);
+  const code = useRef<monaco.editor.IStandaloneCodeEditor | null>(null);
   const [compiled,setCompiled]=useState(!!doc.compiled);
   const path="/api/owner/documents/"+doc.id;
   const text=draft[name]??source?.content??"";
@@ -150,6 +197,46 @@ export default function ProjectEditor({doc,tasks,onVersion,suggest,codexReady=fa
   useEffect(()=>{try{draftStorage.setItem(storageKey,JSON.stringify(draft));draftStorage.setItem(storageKey+".new",JSON.stringify(created))}catch{setMessage("Browser draft storage is full. Save a version before leaving.");}},[storageKey,draft,created]);
   const dirty=Object.keys(draft).length>0;
   const showingPreparedDiff = previousSource?.name === name;
+  const syncAvailable = latestSync !== undefined ? latestSync : source?.sync;
+  const canSync = Boolean(syncAvailable && !dirty && !busy);
+  useEffect(() => () => syncRequest.current?.abort(), [path, name, dirty, busy]);
+  useEffect(() => {if (dirty) setPdfTarget(undefined);}, [dirty]);
+
+  async function syncTo<T extends PdfPosition | SourcePosition>(query: URLSearchParams, apply: (result: T) => void) {
+    syncRequest.current?.abort();
+    const controller = new AbortController();
+    syncRequest.current = controller;
+    setMessage("");
+    try {
+      const result = await api<T | null>(path + "/sync?" + query, "GET", undefined, controller.signal);
+      if (controller.signal.aborted) return;
+      if (result) apply(result);
+      else setMessage("No matching position in this version.");
+    } catch (error) {
+      if (!controller.signal.aborted) setMessage((error as Error).message);
+    }
+  }
+
+  function showInPdf() {
+    const position = code.current?.getPosition();
+    if (!canSync || !position) return;
+    setLayout(previous => ({...previous, pdf: true}));
+    void syncTo<PdfPosition>(new URLSearchParams({
+      name, line: String(position.lineNumber), column: String(position.column),
+    }), setPdfTarget);
+  }
+
+  function showInSource(position: PdfPosition) {
+    void syncTo<SourcePosition>(new URLSearchParams({
+      page: String(position.page), x: String(position.x), y: String(position.y),
+    }), result => {
+      setCompare(false);
+      setReview(undefined);
+      setPreviousSource(undefined);
+      setName(result.name);
+      setSourceTarget(result);
+    });
+  }
   async function comparePrepared() {
     if (showingPreparedDiff) {
       setPreviousSource(undefined);
@@ -168,11 +255,14 @@ export default function ProjectEditor({doc,tasks,onVersion,suggest,codexReady=fa
   function change(v:string){setDraft(prev=>{const d={...prev};if(v===source?.content && !created.includes(name))delete d[name];else d[name]=v;return d;});}
   function dismiss(p:Proposal){const next=[...ignored,p.key];setIgnored(next);draftStorage.setItem(storageKey+".skipped",JSON.stringify(next));setReview(undefined);}
   async function save(compile:boolean){
+    if (busy) return;
     setBusy(true);setMessage("");
     let id=doc.id;
     try{
-      if(dirty){id=(await api<{id:string}>(path+"/save","POST",{files:draft,created})).id;}
-      try{if(compile){const result=await api<{checks:Checks|null}>("/api/owner/documents/"+id+"/compile","POST");setChecks(result.checks);setCompiled(true);}}
+      if(dirty || (compile && compiled && syncAvailable === false)){
+        id=(await api<{id:string}>(path+"/save","POST",{files:draft,created})).id;
+      }
+      try{if(compile){const result=await api<{checks:Checks|null;sync:boolean|null}>("/api/owner/documents/"+id+"/compile","POST");setChecks(result.checks);setLatestSync(result.sync);setCompiled(true);}}
       finally{if(id!==doc.id){draftStorage.setItem("desk.project."+id+".file",name);draftStorage.setItem("desk.project."+id+".skipped",JSON.stringify(ignored));if(expanded)draftStorage.setItem("desk.project."+id+".expanded","1");await onVersion(id);draftStorage.removeItem(storageKey);draftStorage.removeItem(storageKey+".new");}}
       setMessage(compile?"PDF compiled.":"Version saved.");
     }catch(e){setMessage(String(e));if(id!==doc.id&&compile)window.alert("Source saved. PDF compilation failed: "+String(e));}finally{setBusy(false);}
@@ -198,7 +288,8 @@ export default function ProjectEditor({doc,tasks,onVersion,suggest,codexReady=fa
           {expanded ? <Minimize2 size={16} aria-hidden="true" /> : <Maximize2 size={16} aria-hidden="true" />}
           {expanded ? "Exit full page" : "Full page"}</button>
         <button disabled={busy || !dirty} onClick={() => save(false)}>Save version</button>
-        <button className="primary" disabled={busy} onClick={() => save(true)}>Recompile PDF</button>
+        <button className="primary" title="Recompile PDF (Ctrl or ⌘ + Alt + B)" disabled={busy || !source} onClick={() => save(true)}>
+          {busy ? "Working…" : "Recompile PDF"}</button>
       </div>
     </div>
     <div className="studio-grid" ref={panes} style={paneStyle}>
@@ -211,8 +302,10 @@ export default function ProjectEditor({doc,tasks,onVersion,suggest,codexReady=fa
     <PaneDivider label="Resize file tree" min={minFiles} max={maxFiles} value={filesWidth} direction={1}
       onResize={width => setLayout(previous => ({...previous, filesWidth: width}))} /></>}
     <section className="editor-pane"><div className="pane-title">{name} {showingPreparedDiff ? " · Previous ↔ Prepared PDF source" : review?" · Current ↔ Codex proposal":compare?" · Saved ↔ Working copy":""}</div>
-    {source ? <Code key={name} text={showingPreparedDiff ? previousSource.content : compare?source.content:text}
-      proposed={showingPreparedDiff ? source.content : compare?text:proposed} onChange={change}/> : <p>Loading file…</p>}
+    {source?.name === name ? <Code key={name} text={showingPreparedDiff ? previousSource.content : compare?source.content:text}
+      proposed={showingPreparedDiff ? source.content : compare?text:proposed} onChange={change} busy={busy}
+      jump={sourceTarget?.name === name ? sourceTarget : undefined} onReady={editor => {code.current = editor;}}
+      onCompile={() => void save(true)} onShowPdf={showInPdf}/> : <p>Loading file…</p>}
     <div className="editor-review">{source&&draft[name]!==undefined&&!review&&<button onClick={()=>setCompare(!compare)}>{compare?"Back to editor":"Compare working copy"}</button>}{suggest&&<button disabled={!codexReady||dirty||busy||!name.endsWith(".tex")||!source||tasks.some(t=>["queued","running"].includes(t.status))} onClick={async()=>{setBusy(true);try{await suggest(name)}catch(e){setMessage(String(e))}finally{setBusy(false)}}}>Request Codex edits <AIBadge /></button>}
     {doc.verified && name === doc.entry && source?.parent && <button onClick={() => void comparePrepared()}>
       {showingPreparedDiff ? "Back to editor" : "Compare prepared version"}</button>}
@@ -223,7 +316,20 @@ export default function ProjectEditor({doc,tasks,onVersion,suggest,codexReady=fa
     <button onClick={()=>setReview(undefined)}>Back to editor</button></div>}</div></section>
     {layout.pdf && <><PaneDivider label="Resize PDF preview" min={minPdf} max={maxPdf} value={pdfWidth} direction={-1}
       onResize={width => setLayout(previous => ({...previous, pdfWidth: width}))} />
-    <aside className="preview-pane"><div className="pane-title">PDF preview {dirty&&"· last compiled version"}</div>
-    {checks&&<p role="status">{checks.pages!=null&&` ${checks.pages} ${checks.pages===1?"page":"pages"}. `}{checks.overfull>0&&` ${checks.overfull} layout overflow warning${checks.overfull===1?"":"s"}.`}{!!checks.pages&&checks.pages>1&&doc.kind!=="cover"&&" Review the résumé length before submitting."}</p>}{compiled?<iframe title="Compiled document" src={assetHref(path+"/pdf")}/>:<p>Recompile to preview this version.</p>}</aside></>}</div>
+    <aside className="preview-pane"><div className="pane-title preview-heading">
+      <span>PDF preview {dirty&&"· last compiled version"}</span>
+      {compiled && !demoMode && <button type="button" disabled={!canSync || !source || compare || !!review || showingPreparedDiff}
+        onClick={showInPdf} title={syncAvailable === false || dirty ? "Recompile to update SyncTeX" : "Show in PDF (Ctrl or ⌘ + Alt + J)"}><Crosshair size={15}/>Show in PDF</button>}
+    </div>
+    {compiled ? <LatexPdf key={path} url={path+"/pdf"} target={pdfTarget} onSource={canSync ? showInSource : undefined}/>
+      : <p>Recompile to preview this version.</p>}</aside></>}</div>
+    {checks && (checks.overfull > 0 || exceedsOnePage) &&
+      <p className="studio-message" role="status">
+        {checks.overfull > 0 && `${checks.overfull} layout overflow warning${checks.overfull === 1 ? "." : "s."}`}
+        {checks.overfull > 0 && exceedsOnePage && " "}
+        {exceedsOnePage && (doc.kind === "cover"
+          ? "The cover letter exceeds one page. Shorten it or remove the appendix, then recompile."
+          : "The résumé exceeds one page. Shorten it, then recompile.")}
+      </p>}
     {message&&<p className="studio-message" role="status">{message}</p>}</section>;
 }

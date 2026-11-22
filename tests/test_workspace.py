@@ -1,7 +1,9 @@
 
+import gzip
 import secrets
 import time
 from datetime import UTC, datetime, timedelta
+from types import SimpleNamespace
 
 import pytest
 from fastapi.testclient import TestClient
@@ -144,6 +146,51 @@ def test_source_failure_keeps_previous_result(app, monkeypatch):
     assert db.one("SELECT active FROM jobs")["active"] == 1
     assert db.one("SELECT last_success FROM sources")["last_success"] == before
     assert db.one("SELECT error FROM sources")["error"]
+
+
+def test_synctex_persists_with_compiled_version_and_resolves_nested_sources(app, monkeypatch):
+    def fixture_repo(directory, profile, token):
+        (directory / "letter").mkdir()
+        (directory / "letter/main.tex").write_text("Document", encoding="utf-8")
+        (directory / "section.tex").write_text("Included text", encoding="utf-8")
+        return "a" * 40, "letter/main.tex"
+
+    def render(work, entry):
+        pdf = work / entry.parent / "fixture.pdf"
+        pdf.write_bytes(b"%PDF-1.4")
+        mapping = pdf.with_suffix(".synctex.gz")
+        with gzip.open(mapping, "wb") as output:
+            output.write(f"Input:1:{work / 'section.tex'}\n".encode())
+        documents.normalize_pdf_sync(mapping, work, pdf.parent)
+        return pdf
+
+    def lookup(args, cwd, **kwargs):
+        assert cwd.name == "letter"
+        if args[1] == "view":
+            assert args[3] == "4:1:../section.tex"
+            return SimpleNamespace(returncode=0, stdout="SyncTeX result begin\nOutput:fixture.pdf\n"
+                                   "Page:2\nx:72.5\ny:84.0\nSyncTeX result end\n")
+        return SimpleNamespace(returncode=0, stdout="SyncTeX result begin\nOutput:fixture.pdf\n"
+                               "Input:../section.tex\nLine:4\nColumn:-1\nSyncTeX result end\n")
+
+    monkeypatch.setattr(documents, "fetch_resume", fixture_repo)
+    monkeypatch.setattr(documents, "render_pdf", render)
+    monkeypatch.setattr(documents.shutil, "which", lambda name: name)
+    monkeypatch.setattr(documents.subprocess, "run", lookup)
+    owner = TestClient(app)
+    signed_session(app, owner, "google|owner")
+    version = owner.post("/api/owner/templates/resume", headers=ORIGIN, content=b"").json()["id"]
+    endpoint = f"/api/owner/documents/{version}"
+    assert owner.get(endpoint + "/sync").status_code == 404
+    assert owner.post(endpoint + "/compile", headers=ORIGIN, content=b"").json()["sync"]
+    mapping = documents.document_root(app.state.settings, version) / "resume.synctex.gz"
+    with gzip.open(mapping, "rt") as saved:
+        assert saved.read() == "Input:1:../section.tex\n"
+    assert TestClient(app).get(endpoint + "/sync").status_code == 401
+    forward = owner.get(endpoint + "/sync", params={"name": "section.tex", "line": 4})
+    assert forward.json() == {"page": 2, "x": 72.5, "y": 84.0}
+    assert owner.get(endpoint + "/sync", params=forward.json()).json() == {"name": "section.tex", "line": 4, "column": 1}
+    assert owner.get(endpoint + "/sync", params={"name": "../section.tex"}).status_code == 422
 
 
 def test_mcp_scope_and_authenticated_lookup(app, monkeypatch):

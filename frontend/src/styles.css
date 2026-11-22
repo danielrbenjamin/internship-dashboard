@@ -262,7 +262,10 @@ textarea::placeholder, input::placeholder { color: var(--muted); }
 .catalog-map { min-width: 0; min-height: 0; overflow: auto; }
 .jobs-page .inbox.single-pane { grid-template-columns: minmax(0,1fr); }
 .inbox.single-pane .feed { border-right: 0; }
-.catalog-focus-details > :is(.jobs-toolbar, .pipeline, .filters) { display: none; }
+.catalog-expanded > .panel.catalog { padding: 0; overflow: hidden; min-height: 0; }
+.catalog-expanded > .panel.catalog > :not(.inbox) { display: none; }
+.catalog-expanded > .panel.catalog > .inbox { flex: 1 1 0; border: 0; border-radius: 0; overflow: hidden; }
+.catalog-expanded .inbox > :is(.feed, .detail, .catalog-map):not([hidden]) { max-height: none; border: 0; }
 .catalog-focus-details .posting-content { width: min(100%, 65rem); margin-inline: auto; padding-inline: clamp(1rem, 4vw, 2rem); }
 @media (max-width: 780px) {
   .jobs-page .inbox.single-pane .feed { max-height: none; border-bottom: 0; }
@@ -348,7 +351,7 @@ input[type="checkbox"] { width: 1rem; min-height: 1rem; padding: 0; accent-color
 input[type="radio"] { width: 1rem; min-height: 1rem; padding: 0; flex: none; accent-color: var(--focus); }
 fieldset { margin: 0 0 .55rem; border: 1px solid var(--line); border-radius: .4rem; }
 
-.map-panel { min-width: 0; height: 100%; overflow: auto; }
+.map-panel { min-width: 0; height: 100%; overflow: auto; container-type: inline-size; }
 .map-inbox.selected .map-panel { border-right: 1px solid var(--line); }
 .map-toolbar, .map-controls { display: flex; align-items: center; flex-wrap: wrap; gap: .45rem; }
 .map-toolbar { justify-content: space-between; padding: .52rem .65rem; }
@@ -356,6 +359,19 @@ fieldset { margin: 0 0 .55rem; border: 1px solid var(--line); border-radius: .4r
 .map-controls > button[aria-pressed="true"] { background: var(--selected); }
 .map-viewport { height: clamp(20rem, 55vh, 38rem); isolation: isolate; border-block: 1px solid var(--line); }
 .map-viewport.leaflet-container { background: #d9e8ed; font-family: inherit; }
+.map-workspace { display: grid; grid-template-columns: minmax(0, 1.65fr) minmax(15rem, 1fr); border-top: 1px solid var(--line); }
+.map-workspace .map-viewport { border-top: 0; }
+.map-workspace .map-selection { display: flex; flex-direction: column; min-width: 0; border-inline-start: 1px solid var(--line); }
+.map-selection-heading { display: flex; align-items: center; justify-content: space-between; gap: .5rem; margin-bottom: .4rem; }
+.map-selection-heading h3 { margin: 0; }
+.map-workspace .map-results { max-height: clamp(12rem, 45vh, 34rem); }
+.map-workspace .map-unmapped { padding-inline: 0; }
+@container (max-width: 42rem) {
+  .map-workspace { grid-template-columns: minmax(0, 1fr); }
+  .map-workspace .map-selection { border-inline-start: 0; }
+  .map-workspace .map-viewport { height: clamp(13rem, 38dvh, 21rem); }
+  .map-workspace .map-results { max-height: none; }
+}
 .job-location, .job-cluster {
   display: grid;
   place-items: center;
@@ -772,15 +788,14 @@ nav .nav-group h2 { letter-spacing: .025em; }
   visibility: visible;
 }
 @media (max-width: 780px) {
-  .layout:has(.studio-expanded) {
+  .layout:is(:has(.studio-expanded), .catalog-expanded) {
     display: grid;
     grid-template-columns: minmax(0, 1fr);
     grid-template-rows: auto minmax(0, 1fr);
     height: 100dvh;
     overflow: hidden;
   }
-  .layout:has(.studio-expanded) > .panel { min-height: 0; }
-  .catalog-expanded > .navigation { position: sticky; top: 0; z-index: 10; background: var(--rail); }
+  .layout:is(:has(.studio-expanded), .catalog-expanded) > .panel { min-height: 0; }
 }
 .studio .studio-toolbar { flex-shrink: 0; }
 .studio-actions { display: flex; flex-wrap: wrap; gap: .35rem; }
@@ -795,11 +810,35 @@ nav .nav-group h2 { letter-spacing: .025em; }
 .studio .editor-pane { display: flex; flex: 1 1 0; flex-direction: column; border: 0; }
 .studio .preview-pane { display: flex; flex: 0 0 var(--pdf-width); flex-direction: column; min-width: 0; }
 .studio :is(.pane-title, .editor-review) { flex-shrink: 0; }
-.studio .codepane, .studio .preview-pane iframe { flex: 1 1 0; min-height: 0; height: auto; }
+.studio .codepane, .latex-pdf-scroll { flex: 1 1 0; min-height: 0; }
+.preview-heading, .latex-pdf-controls { display: flex; align-items: center; flex-wrap: wrap; gap: .35rem; }
+.preview-heading { justify-content: space-between; }
+.preview-heading button, .latex-pdf-controls :is(button,.button) { min-height: 1.7rem; padding: .2rem .4rem; }
+.latex-pdf-controls { padding: .3rem .5rem; border-bottom: 1px solid var(--line); }
+.latex-pdf-controls > .button { margin-inline-start: auto; }
+.latex-pdf-scroll { overflow: auto; padding: 12px; background: var(--surface); }
+.latex-pdf-page { position: relative; margin: 0 auto .7rem; background: white; color: #222; box-shadow: 0 0 0 1px var(--line); }
+.latex-pdf-page:last-child { margin-bottom: 0; }
+.latex-pdf-canvas canvas { display: block; width: 100%; height: auto; }
+.latex-pdf-text {
+  position: absolute; inset: 0; overflow: clip; line-height: 1; text-align: initial;
+  --min-font-size: 1;
+}
+.latex-pdf-text :is(span, br) {
+  position: absolute; color: transparent; white-space: pre; cursor: text; transform-origin: 0 0;
+  font-size: calc(var(--total-scale-factor) * var(--min-font-size) * var(--font-height, 0));
+  transform: rotate(var(--rotate, 0deg)) scaleX(var(--scale-x, 1)) scale(calc(1 / var(--min-font-size)));
+}
+.latex-pdf-text ::selection { background: #426fe155; color: transparent; }
+.latex-pdf-target {
+  position: absolute; width: 1.25rem; height: 1.25rem; border-radius: 50%;
+  border: 2px solid #a54b00; background: #ffaf4b66; transform: translate(-50%, -50%);
+  pointer-events: none;
+}
 .studio .editor-review { overflow: auto; max-height: 30%; }
 .pane-divider { flex: 0 0 6px; cursor: col-resize; background: var(--surface); touch-action: none; }
 .pane-divider:is(:hover, :focus-visible, [data-dragging]) { background: var(--focus); }
-.studio-grid:has(.pane-divider[data-dragging]) :is(iframe, .codepane) { pointer-events: none; }
+.studio-grid:has(.pane-divider[data-dragging]) :is(.latex-pdf-scroll, .codepane) { pointer-events: none; }
 .studio-message { margin: 0; padding: .45rem .65rem; border-top: 1px solid var(--line); }
 @media (max-width: 880px) {
   .studio .studio-grid { flex-direction: column; height: auto; overflow: auto; }
@@ -808,7 +847,7 @@ nav .nav-group h2 { letter-spacing: .025em; }
   .studio .editor-pane { flex: none; min-height: 24rem; }
   .studio .preview-pane { flex: none; min-height: 26rem; }
   .studio .codepane { height: clamp(20rem, 44dvh, 35rem); flex: none; }
-  .studio .preview-pane iframe { flex: none; height: 50dvh; }
+  .studio .latex-pdf-scroll { flex: none; height: 50dvh; }
 }
 
 @media (min-width: 781px) {

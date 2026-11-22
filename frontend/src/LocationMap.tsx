@@ -1,4 +1,4 @@
-import {useEffect, useMemo, useRef, useState} from "react";
+import {useEffect, useMemo, useRef, useState, type ReactNode} from "react";
 import L from "leaflet";
 import "leaflet.markercluster";
 import "leaflet/dist/leaflet.css";
@@ -66,10 +66,11 @@ function icon(className: string, count: number) {
   return L.divIcon({className, html: `<span>${count}</span>`, iconSize: [size, size]});
 }
 
-export default function LocationMap({roles, onRole, capped}: {
-  roles: Role[]; onRole: (id: string) => void; capped: boolean;
+export default function LocationMap({roles, onRole, capped, fullPage}: {
+  roles: Role[]; onRole: (id: string) => void; capped: boolean; fullPage: ReactNode;
 }) {
   const viewport = useRef<HTMLDivElement>(null);
+  const matchHeading = useRef<HTMLHeadingElement>(null);
   const map = useRef<L.Map | null>(null);
   const tiles = useRef<L.TileLayer | null>(null);
   const markers = useRef<L.MarkerClusterGroup | null>(null);
@@ -79,6 +80,15 @@ export default function LocationMap({roles, onRole, capped}: {
   const [region, setRegion] = useState<Region>("north-america");
   const [streets, setStreets] = useState(true);
   const [selected, setSelected] = useState("");
+  const [dragOnTouch, setDragOnTouch] = useState(false);
+  const [touchMap, setTouchMap] = useState(() => matchMedia("(pointer: coarse)").matches);
+
+  useEffect(() => {
+    const pointer = matchMedia("(pointer: coarse)");
+    const update = () => setTouchMap(pointer.matches);
+    pointer.addEventListener("change", update);
+    return () => pointer.removeEventListener("change", update);
+  }, []);
 
   useEffect(() => {
     const controller = new AbortController();
@@ -103,7 +113,8 @@ export default function LocationMap({roles, onRole, capped}: {
     if (!data || !viewport.current) return;
     const instance = L.map(viewport.current, {
       minZoom: 1, maxZoom: 16, maxBounds: [[-85, -180], [85, 180]], maxBoundsViscosity: .8,
-      zoomSnap: .5, zoomDelta: 1, scrollWheelZoom: true, preferCanvas: true,
+      zoomSnap: .5, zoomDelta: 1, scrollWheelZoom: false, preferCanvas: true,
+      dragging: false,
     });
     map.current = instance;
     instance.fitBounds(regionBounds["north-america"], {padding: [16, 16]});
@@ -132,6 +143,12 @@ export default function LocationMap({roles, onRole, capped}: {
       map.current = null;
     };
   }, [data, markerCounts]);
+
+  useEffect(() => {
+    if (!map.current) return;
+    if (!touchMap || dragOnTouch) map.current.dragging.enable();
+    else map.current.dragging.disable();
+  }, [data, touchMap, dragOnTouch]);
 
   useEffect(() => {
     if (!map.current || !tiles.current) return;
@@ -173,6 +190,14 @@ export default function LocationMap({roles, onRole, capped}: {
     layer.addLayers(pins);
   }, [groups, markerCounts]);
 
+  useEffect(() => {
+    if (!selected || !matchHeading.current || !viewport.current) return;
+    const list = matchHeading.current.getBoundingClientRect();
+    if (list.top >= viewport.current.getBoundingClientRect().bottom) {
+      matchHeading.current.scrollIntoView({block: "nearest"});
+    }
+  }, [selected]);
+
   function switchRegion(value: Region) {
     setRegion(value);
     setSelected("");
@@ -186,6 +211,7 @@ export default function LocationMap({roles, onRole, capped}: {
   }
 
   const group = groups.get(selected);
+  const shown = group?.roles ?? roles;
   return <section className="map-panel" aria-label="Job locations">
     <div className="map-toolbar">
       <div><strong>Job locations</strong>
@@ -197,15 +223,25 @@ export default function LocationMap({roles, onRole, capped}: {
               {value === "world" ? "World" : "North America"}</button>)}
         </div>
         <button aria-pressed={streets} onClick={() => setStreets(!streets)}>Street map</button>
+        {touchMap && <button aria-pressed={dragOnTouch} onClick={() => setDragOnTouch(!dragOnTouch)}>Drag map</button>}
+        {fullPage}
       </div>
     </div>
     {error ? <p role="alert" className="map-message">{error}</p> : !data ? <p role="status" className="map-message">Loading map…</p> :
       <>
-        <div ref={viewport} className="map-viewport" aria-label="Interactive map. Use arrow keys to pan and plus or minus to zoom." />
-        {group ? <div className="map-selection"><h3>{group.label}</h3>{list(group.roles)}</div> :
-          <p className="map-message">{groups.size ? "Select a city to see its roles." : "No city-level locations in these results."}</p>}
-        {!!unmapped.length && <details className="map-unmapped"><summary>Remote, broad or unmapped locations ({unmapped.length})</summary>
-          {list(unmapped)}</details>}
+        <div className="map-workspace">
+          <div ref={viewport} className="map-viewport" aria-label="Interactive map. Use arrow keys to pan and plus or minus to zoom." />
+          <section className="map-selection" aria-label="Roles on this map">
+            <div className="map-selection-heading">
+              <h3 ref={matchHeading}>{group ? group.label : "Matching roles"}</h3>
+              {group && <button type="button" onClick={() => setSelected("")}>Show all roles</button>}
+            </div>
+            {shown.length ? list(shown) : <p className="map-message">No matching roles.</p>}
+            {group && !!unmapped.length && <details className="map-unmapped">
+              <summary>Remote, broad or unmapped locations ({unmapped.length})</summary>
+              {list(unmapped)}</details>}
+          </section>
+        </div>
         <p className="map-credit">Boundaries by <a href="https://www.naturalearthdata.com/" target="_blank" rel="noreferrer">Natural Earth</a>
           {" · "}Cities from <a href="https://www.geonames.org/" target="_blank" rel="noreferrer">GeoNames</a>
           {" · "}<a href="https://creativecommons.org/licenses/by/4.0/" target="_blank" rel="noreferrer">CC BY 4.0</a></p>

@@ -5,7 +5,7 @@ A public internship catalog with a private workspace for tracking applications, 
 
 ## Windows development
 
-Install Python 3.12, Node 24, and a working TeX distribution with `pdflatex` on PATH. From the repository root in PowerShell:
+Install Python 3.12, Node 24, and a working TeX distribution with `pdflatex` and `synctex` on PATH. From the repository root in PowerShell:
 
 ```powershell
 py -3.12 -m venv .venv
@@ -68,6 +68,8 @@ Watchlists and saved searches live in the owner workspace. Commas separate alter
 In Settings, specify each GitHub template repository as `owner/repository`, its branch, and the exact relative LaTeX filename, including capitalization. For private templates, set a fine-grained `GITHUB_TOKEN` with Contents read access to the selected private résumé and cover-letter repositories. Enter the verified experience and eligibility profile directly in Settings.
 
 Open Application materials → My templates to import your GitHub LaTeX project. Configure the repository, entry file and branch for each template in Settings → Profile. Open a tracked application to make a role-specific copy using Use my saved template. Edit project files in the browser, review individual Codex proposals as side-by-side diffs, and merge the changes you want into your working copy. Save version checkpoints the edited files. Recompile PDF saves and renders them together. A private repository needs read access on the server.
+
+After compiling, choose **Show in PDF** to locate the editor cursor in the preview. Double-click the PDF to jump back to its source. Recompile older PDFs once to generate their SyncTeX data. The Docker image checks the LaTeX packages used by the résumé and cover-letter templates, including XCharter and SVG support. For SVG assets, commit the generated PDF and any LaTeX overlay with the template so pdfLaTeX can include them with shell escape disabled.
 
 Use **Prepare both PDFs** for a tracked application, or enable automatic preparation for strong matches under Where to apply. The worker edits the configured entry in each role-specific project, compiles it, and attempts up to two targeted repairs for compile errors, extra pages, or overfull boxes. Passing PDFs are saved as new versions. The role moves to Ready once both latest versions pass. If a proposal needs manual review, open it in the existing diff editor.
 

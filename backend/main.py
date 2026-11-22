@@ -25,9 +25,11 @@ from .documents import (
     compile_version,
     cover_letter_pdf,
     document_root,
+    pdf_sync_status,
     preview_edit,
     project_source,
     store_version,
+    sync_pdf,
 )
 from .mail_accounts import install_mail
 from .mcp import install_mcp
@@ -377,7 +379,8 @@ def create_app(settings=None):
             raise HTTPException(422, str(exc)) from None
         except subprocess.TimeoutExpired:
             raise HTTPException(422, "LaTeX compilation timed out") from None
-        return {"ok": True, "checks": db.one("SELECT pages,overfull FROM document_checks WHERE document_id=?", (doc_id,))}
+        return {"ok": True, "sync": pdf_sync_status(document_root(settings, doc_id)),
+                "checks": db.one("SELECT pages,overfull FROM document_checks WHERE document_id=?", (doc_id,))}
 
     @app.post("/api/owner/documents/{doc_id}/preview")
     def preview_document(doc_id: str, edit: Edit, owner: Owner):
@@ -413,9 +416,26 @@ def create_app(settings=None):
             return {"files": sorted(p.relative_to(root).as_posix() for p in root.rglob("*.tex") if p.is_file()),
                     "tree":tree, "checks":db.one("SELECT pages,overfull FROM document_checks WHERE document_id=?", (doc_id,)),
                     "ancestors":[r["id"] for r in ancestors], "parent": comparison["parent"] if comparison else None,
-                    "name": path.relative_to(root).as_posix(), "content": path.read_text(encoding="utf-8")}
+                    "name": path.relative_to(root).as_posix(), "content": path.read_text(encoding="utf-8"),
+                    "sync": pdf_sync_status(root.parent) if doc["compiled"] else None}
         except (ValueError, OSError):
             raise HTTPException(422, "Could not read this LaTeX file") from None
+
+    @app.get("/api/owner/documents/{doc_id}/sync")
+    def document_sync(
+        doc_id: str, owner: Owner, name: str | None = Query(None, max_length=512),
+        line: int = Query(1, ge=1, le=160000), column: int = Query(1, ge=1, le=160000),
+        page: int = Query(1, ge=1, le=10000),
+        x: float = Query(0, ge=-100000, le=100000), y: float = Query(0, ge=-100000, le=100000),
+    ):
+        doc = get_document(doc_id, owner)
+        root = document_root(settings, doc_id)
+        if not doc["compiled"] or not pdf_sync_status(root):
+            raise HTTPException(404, "Recompile this version to enable SyncTeX.")
+        try:
+            return sync_pdf(root, doc["entry"], name=name, line=line, column=column, page=page, x=x, y=y)
+        except (ValueError, OSError, subprocess.TimeoutExpired):
+            raise HTTPException(422, "Could not find the matching source or PDF position.") from None
 
     @app.get("/api/owner/documents/{doc_id}/{kind}")
     def download(doc_id: str, kind: str, owner: Owner):

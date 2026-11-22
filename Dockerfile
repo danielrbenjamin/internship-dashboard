@@ -16,7 +16,10 @@ COPY backend ./backend
 RUN pip install --no-cache-dir .
 RUN apt-get update && apt-get install -y --no-install-recommends \
         texlive-latex-extra texlive-fonts-recommended texlive-fonts-extra \
-    && kpsewhich XCharter.sty \
+    && command -v synctex \
+    && for package in article.cls geometry.sty XCharter.sty xcolor.sty graphicx.sty tabularx.sty \
+        array.sty booktabs.sty svg.sty fontenc.sty inputenc.sty enumitem.sty hyperref.sty titlesec.sty; \
+        do kpsewhich "$package" || exit 1; done \
     && rm -rf /var/lib/apt/lists/*
 
 FROM base AS app

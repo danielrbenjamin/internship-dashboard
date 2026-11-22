@@ -1,5 +1,5 @@
 
-import {lazy, Suspense, useCallback, useEffect, useRef, useState} from "react";
+import {lazy, Suspense, useCallback, useEffect, useLayoutEffect, useRef, useState} from "react";
 import {BriefcaseBusiness, List, Map as MapIcon, Maximize2, Minimize2, Search as SearchIcon, SlidersHorizontal} from "lucide-react";
 import {createRoot} from "react-dom/client";
 import {api, ApiError, formatDate, statuses} from "./api";
@@ -78,6 +78,10 @@ function App() {
   const [sourceFilter, setSourceFilter] = useState("");
   const [statusFilter, setStatusFilter] = useState("");
   const [catalogFocus, setCatalogFocus] = useState<"list" | "details" | null>(null);
+  const catalogPanel = useRef<HTMLElement>(null);
+  const beforeCatalogFocus = useRef(0);
+  const focusReturn = useRef<HTMLElement | null>(null);
+  const openedFromFullList = useRef(false);
   const [mode, setMode] = useState<"List" | "Map">("List");
   const [detail, setDetail] = useState<Job>();
   const [detailError, setDetailError] = useState("");
@@ -144,8 +148,12 @@ function App() {
       }
       if (event.key === "Escape" && ["Browse", "Saved", "Applied"].includes(view) &&
           !target?.closest("input, textarea, select, [contenteditable], dialog") &&
-          !document.querySelector(".account-menu:popover-open")) {
-        if (catalogFocus) setCatalogFocus(null);
+          !document.querySelector(".account-menu:popover-open, dialog:modal")) {
+        if (catalogFocus) {
+          event.preventDefault();
+          setCatalogFocus(null);
+          requestAnimationFrame(() => focusReturn.current?.focus({preventScroll: true}));
+        }
         else closeDetails();
       }
     };
@@ -260,7 +268,8 @@ function App() {
     const control = document.querySelector<HTMLButtonElement>(`[data-job="${CSS.escape(selected)}"]`);
     setSelected("");
     if (catalogFocus === "details") {
-      setCatalogFocus(mode === "List" ? "list" : null);
+      setCatalogFocus(openedFromFullList.current ? "list" : null);
+      openedFromFullList.current = false;
       requestAnimationFrame(() => control?.focus({preventScroll: true}));
     } else {
       control?.focus({preventScroll: true});
@@ -272,13 +281,35 @@ function App() {
   const protectedPage = !publicViews.includes(view);
   const signInUrl = "/auth/login?next=" + encodeURIComponent(routeUrl(route));
   const isCatalog = view === "Browse" || view === "Saved" || view === "Applied";
-  const expandedPane = isCatalog ? catalogFocus : null;
+  const expandedPane = isCatalog && (catalogFocus !== "details" || selected) ? catalogFocus : null;
+  const catalogExpanded = expandedPane !== null;
+  useLayoutEffect(() => {
+    const panel = catalogPanel.current;
+    if (!panel || !catalogExpanded) return;
+    panel.scrollTop = 0;
+    return () => {panel.scrollTop = beforeCatalogFocus.current;};
+  }, [catalogExpanded]);
+
+  function toggleCatalogFocus(pane: "list" | "details", control: HTMLButtonElement) {
+    if (expandedPane === pane) {
+      setCatalogFocus(null);
+      return;
+    }
+    beforeCatalogFocus.current = catalogPanel.current?.scrollTop ?? 0;
+    focusReturn.current = control;
+    openedFromFullList.current = false;
+    setCatalogFocus(pane);
+  }
+
   function togglePosting(job: string) {
     if (selected === job) {
       closeDetails();
     } else {
       setSelected(job);
-      if (expandedPane === "list") setCatalogFocus("details");
+      if (expandedPane === "list") {
+        openedFromFullList.current = true;
+        setCatalogFocus("details");
+      }
     }
   }
 
@@ -293,7 +324,7 @@ function App() {
         startDemoTour={() => {navigate("Overview"); setTourOpen(true);}}
         onSignOut={() => {void api<{redirect: string}>("/auth/logout", "POST")
           .then(result => window.location.assign(result.redirect)).catch(showError);}} />
-      <main id="main" tabIndex={-1} className={isCatalog ? "panel catalog jobs-page" + (expandedPane ? " catalog-focus-" + expandedPane : "") : view === "Materials" || view === "Screening" ? "panel page jobs-page" : "panel page"}>
+      <main ref={catalogPanel} id="main" tabIndex={-1} className={isCatalog ? "panel catalog jobs-page" + (expandedPane ? " catalog-focus-" + expandedPane : "") : view === "Materials" || view === "Screening" ? "panel page jobs-page" : "panel page"}>
         {signInNotice && !owner && !session?.login_available && <section id="sign-in-help" className="notice" aria-label="Owner sign-in setup">
           <strong>Owner sign-in needs Auth0 setup.</strong>
           <p>Set the Auth0 web application details and your owner subject in the local environment, then restart the app.</p>
@@ -388,7 +419,11 @@ function App() {
           <div className={"inbox" + (selected ? " selected" : "") + (mode === "Map" ? " map-inbox" : "") + (expandedPane ? " single-pane" : "")}>
             {mode === "Map" ? <div className="catalog-map" hidden={expandedPane === "details"}><Suspense fallback={<p role="status">Loading map…</p>}>
               <LocationMap roles={rows.map(row => ({...row, id: "job_id" in row ? row.job_id : row.id}))}
-                onRole={togglePosting} capped={view === "Browse" && more} />
+                onRole={togglePosting} capped={view === "Browse" && more}
+                fullPage={<button type="button" onClick={event => toggleCatalogFocus("list", event.currentTarget)}>
+                  {expandedPane === "list" ? <Minimize2 size={15} aria-hidden="true" /> : <Maximize2 size={15} aria-hidden="true" />}
+                  {expandedPane === "list" ? "Exit full page" : "Full page"}
+                </button>} />
             </Suspense></div> : <section hidden={expandedPane === "details"} className={selected && !expandedPane ? "feed" : "feed jobs-table"} aria-label={view === "Browse" ? "Openings" : "Tracked applications"} aria-busy={view === "Browse" && loading}>
               <div className="feed-head"><span role="status">{view === "Browse"
                 ? total !== undefined ? `${total.toLocaleString()} ${total === 1 ? "opening" : "openings"}`
@@ -396,10 +431,11 @@ function App() {
                 : `${rows.length} ${rows.length === 1 ? "application" : "applications"}`}</span>
                 <div className="pane-actions">
                   {view !== "Browse" && <span>Status</span>}
-                  <button type="button" onClick={() => setCatalogFocus(expandedPane === "list" ? null : "list")}
+                  <button type="button" onClick={event => toggleCatalogFocus("list", event.currentTarget)}
                     aria-label={expandedPane === "list" ? "Exit full-page openings" : "Expand openings"}
                     title={expandedPane === "list" ? "Exit full page" : "Expand openings"}>
                     {expandedPane === "list" ? <Minimize2 size={15} aria-hidden="true" /> : <Maximize2 size={15} aria-hidden="true" />}
+                    {expandedPane === "list" ? "Exit full page" : "Full page"}
                   </button>
                 </div>
               </div>
@@ -437,10 +473,11 @@ function App() {
               <div className="detail-header">
                 <span>Posting details</span>
                 <div className="pane-actions">
-                  <button type="button" onClick={() => setCatalogFocus(expandedPane === "details" ? null : "details")}
+                  <button type="button" onClick={event => toggleCatalogFocus("details", event.currentTarget)}
                     aria-label={expandedPane === "details" ? "Exit full-page posting details" : "Expand posting details"}
                     title={expandedPane === "details" ? "Exit full page" : "Expand posting details"}>
                     {expandedPane === "details" ? <Minimize2 size={15} aria-hidden="true" /> : <Maximize2 size={15} aria-hidden="true" />}
+                    {expandedPane === "details" ? "Exit full page" : "Full page"}
                   </button>
                   <button onClick={closeDetails}>Close</button>
                 </div>

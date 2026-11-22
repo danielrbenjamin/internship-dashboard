@@ -140,7 +140,7 @@ def run_next(db, settings):
             if request.get("document") and doc["kind"] == "cover":
                 instruction += ("Suggest edits to the supplied cover-letter template for this job. Review recipient, "
                                 "company, date, body, qualifications, links and PDF metadata for old employer details. "
-                                "Keep its LaTeX layout and signature. Use only verified facts.\n")
+                                "Keep it to one page. Preserve the LaTeX layout and signature. Use only verified facts.\n")
             if request.get("automatic"):
                 instruction += ("Make targeted prose replacements that fit on one page. Keep all LaTeX commands, "
                                 "braces and formatting. Each before must occur once and must not overlap another edit.\n")

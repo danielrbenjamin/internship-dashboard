@@ -1,6 +1,8 @@
 
+import gzip
 import io
 import json
+import math
 import os
 import re
 import shutil
@@ -200,6 +202,9 @@ def store_version(db, settings, owner, app_id, previous=None, edit=None, kind="r
                     bundle.write(file, file.relative_to(source).as_posix())
         if verified_pdf:
             shutil.copyfile(verified_pdf, root / "resume.pdf")
+            mapping = verified_pdf.with_suffix(".synctex.gz")
+            if mapping.is_file():
+                shutil.copyfile(mapping, root / "resume.synctex.gz")
         with db.connect() as conn:
             conn.execute("BEGIN IMMEDIATE")
             if verified_pdf and conn.execute(
@@ -227,19 +232,62 @@ def render_pdf(work, entry):
         raise ValueError("Install pdfLaTeX to compile documents")
     env.update({"openin_any": "p", "openout_any": "p", "TEXMFOUTPUT": str(work),
                 "TEMP": str(work), "TMP": str(work)})
+    cwd = work / entry.parent
+    pdf = cwd / "dashboard-resume.pdf"
+    mapping = pdf.with_suffix(".synctex.gz")
+    mapping.unlink(missing_ok=True)
     for _ in range(2):
         result = subprocess.run(
-            [executable, "-no-shell-escape", "-halt-on-error", "-interaction=nonstopmode",
+            [executable, "-no-shell-escape", "-halt-on-error", "-interaction=nonstopmode", "-synctex=1", "-file-line-error",
              "-jobname=dashboard-resume", "./" + entry.name],
-            cwd=work / entry.parent, env=env, stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL,
+            cwd=cwd, env=env, stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL,
             stderr=subprocess.DEVNULL, timeout=35, check=False,
         )
         if result.returncode:
-            log=work/entry.parent/"dashboard-resume.log"
-            lines=log.read_text(encoding="utf-8",errors="replace").splitlines() if log.is_file() else []
-            detail=next((" ".join(lines[i:i+5])[:450] for i,line in enumerate(lines) if line.startswith("!")),"Check the template and installed packages.")
+            log = pdf.with_suffix(".log")
+            lines = log.read_text(encoding="utf-8", errors="replace").splitlines() if log.is_file() else []
+            detail = "Check the template and installed packages."
+            for index, line in enumerate(lines):
+                location = re.fullmatch(r"(.+\.\w+):(\d+): (.+)", line)
+                if location:
+                    error = " ".join((location[3], *lines[index + 1:index + 5]))
+                    try:
+                        file = (cwd / location[1]).resolve().relative_to(work.resolve()).as_posix()
+                        detail = f"{file}, line {location[2]}: {error}"[:450]
+                    except (OSError, ValueError):
+                        detail = error[:450]
+                    break
+                if line.startswith("!"):
+                    detail = " ".join(lines[index:index + 5])[:450]
+                    break
             raise ValueError("LaTeX compile failed. "+detail)
-    return work / entry.parent / "dashboard-resume.pdf"
+    if mapping.is_file():
+        normalize_pdf_sync(mapping, work.resolve(), cwd.resolve())
+    return pdf
+
+
+def normalize_pdf_sync(mapping, source, cwd):
+    # MiKTeX records absolute paths. Keep project paths relative to the entry directory
+    # so the map still works after the temporary compile directory is removed.
+    try:
+        with gzip.open(mapping, "rb") as file:
+            data = file.read(32_000_001)
+        if len(data) > 32_000_000:
+            mapping.unlink()
+            return
+        def relative_input(match):
+            try:
+                path = (cwd / os.fsdecode(match[2].rstrip(b"\r"))).resolve()
+                if path.is_relative_to(source):
+                    return match[1] + os.fsencode(Path(os.path.relpath(path, cwd)).as_posix())
+            except (OSError, ValueError):
+                pass
+            return match[0]
+
+        with gzip.open(mapping, "wb") as file:
+            file.write(re.sub(rb"^(Input:\d+:)([^\n]*)", relative_input, data, flags=re.MULTILINE))
+    except (OSError, EOFError):
+        mapping.unlink(missing_ok=True)
 
 
 def preview_edit(settings, document, edit):
@@ -279,18 +327,69 @@ def compile_version(db, settings, document):
         pdf = render_pdf(work, PurePosixPath(document["entry"]))
         pages, overflow = pdf_checks(pdf)
         overfull = len(overflow)
-        temporary = root / f"{uuid.uuid4().hex}.tmp"
-        shutil.copyfile(pdf, temporary)
-        # An existing PDF is immutable, including after concurrent compile requests.
+        mapping = pdf.with_suffix(".synctex.gz")
+        temp_pdf = root / f"{uuid.uuid4().hex}.tmp"
+        temp_mapping = temp_pdf.with_suffix(".synctex.tmp")
         try:
-            os.link(temporary, root / "resume.pdf")
-        except FileExistsError:
-            pass
+            shutil.copyfile(pdf, temp_pdf)
+            if mapping.is_file():
+                shutil.copyfile(mapping, temp_mapping)
+            with db.connect() as conn:
+                conn.execute("BEGIN IMMEDIATE")
+                if conn.execute("SELECT compiled FROM documents WHERE id=?", (document["id"],)).fetchone()[0]:
+                    return
+                if temp_mapping.is_file():
+                    temp_mapping.replace(root / "resume.synctex.gz")
+                else:
+                    (root / "resume.synctex.gz").unlink(missing_ok=True)
+                temp_pdf.replace(root / "resume.pdf")
+                conn.execute("UPDATE documents SET compiled=1 WHERE id=?", (document["id"],))
+                conn.execute("INSERT INTO document_checks VALUES(?,?,?)", (document["id"], pages, overfull))
         finally:
-            temporary.unlink()
-    with db.connect() as conn:
-        conn.execute("UPDATE documents SET compiled=1 WHERE id=?", (document["id"],))
-        conn.execute("INSERT OR IGNORE INTO document_checks VALUES(?,?,?)", (document["id"], pages, overfull))
+            temp_pdf.unlink(missing_ok=True)
+            temp_mapping.unlink(missing_ok=True)
+
+
+def pdf_sync_status(root):
+    if shutil.which("synctex") is None:
+        return None
+    return (root / "resume.synctex.gz").is_file()
+
+
+def sync_pdf(root, entry, *, name=None, line=0, column=0, page=0, x=0.0, y=0.0):
+    executable = shutil.which("synctex")
+    if not executable or not (root / "resume.synctex.gz").is_file():
+        return None
+    source = (root / "source").resolve()
+    cwd = source / safe_path(entry).parent
+    output = str((root / "resume.pdf").resolve())
+    if name is not None:
+        relative = Path(os.path.relpath(project_source(source, name), cwd)).as_posix()
+        args = ["view", "-i", f"{line}:{column}:{relative}", "-o", output]
+    else:
+        args = ["edit", "-o", f"{page}:{x:.5f}:{y:.5f}:{output}"]
+    env = {key: os.environ[key] for key in ("PATH", "SYSTEMROOT", "WINDIR") if key in os.environ}
+    result = subprocess.run([executable, *args], cwd=cwd, stdin=subprocess.DEVNULL,
+                            capture_output=True, encoding="utf-8", errors="replace", timeout=5, env=env, check=False)
+    if result.returncode:
+        return None
+    # SyncTeX can return several hits, ordered by proximity.
+    for block in result.stdout.partition("SyncTeX result begin")[2].partition("SyncTeX result end")[0].split("Output:")[1:]:
+        fields = dict(item.split(":", 1) for item in block.splitlines()[1:] if ":" in item)
+        try:
+            if name is not None:
+                target = {"page": int(fields["Page"]), "x": float(fields["x"]), "y": float(fields["y"])}
+                if target["page"] > 0 and math.isfinite(target["x"]) and math.isfinite(target["y"]):
+                    return target
+            else:
+                candidate = (cwd / fields["Input"]).resolve().relative_to(source).as_posix()
+                project_source(source, candidate)
+                if int(fields["Line"]) > 0:
+                    return {"name": candidate, "line": int(fields["Line"]),
+                            "column": max(1, int(fields.get("Column", "1")))}
+        except (KeyError, ValueError, OSError):
+            continue
+    return None
 
 
 def pdf_checks(pdf):
