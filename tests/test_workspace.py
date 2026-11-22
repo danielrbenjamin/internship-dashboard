@@ -1,4 +1,5 @@
 
+import secrets
 import time
 from datetime import UTC, datetime, timedelta
 
@@ -14,14 +15,18 @@ from backend.discovery import run_source
 from backend.main import create_app
 from backend.mcp import SCOPE
 
-SECRET = "test-only-session-key-that-is-at-least-32"
 ORIGIN = {"Origin": "http://localhost:8000"}
 
 
 @pytest.fixture
 def app(tmp_path):
-    return create_app(Settings(_env_file=None, data_dir=tmp_path, session_secret=SECRET, owner_subject="google|owner",
-                               auth0_domain="example.auth0.com"))
+    return create_app(Settings(
+        _env_file=None,
+        data_dir=tmp_path,
+        session_secret=secrets.token_urlsafe(32),
+        owner_subject="google|owner",
+        auth0_domain="example.auth0.com",
+    ))
 
 
 def signed_session(app, client, subject, sid="session"):
@@ -30,7 +35,7 @@ def signed_session(app, client, subject, sid="session"):
 
     app.state.db.execute("INSERT INTO sessions VALUES (?,?,?)", (sid, subject, time.time() + 3600))
     value = base64.b64encode(json.dumps({"sid": sid}).encode())
-    client.cookies.set("session", TimestampSigner(SECRET).sign(value).decode())
+    client.cookies.set("session", TimestampSigner(app.state.settings.session_secret).sign(value).decode())
 
 
 def test_catalog_posting_window_and_overlapping_disciplines(app):
