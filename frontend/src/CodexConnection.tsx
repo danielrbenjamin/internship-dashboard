@@ -2,6 +2,9 @@ import {useEffect, useState} from "react";
 import {api} from "./api";
 
 type Worker = {status: string; checked: string | null};
+export function AIBadge() {
+  return <span className="ai-badge" title="Uses Codex when this runs">AI</span>;
+}
 
 export function useCodexStatus(owner: boolean) {
   const [worker, setWorker] = useState<Worker>();

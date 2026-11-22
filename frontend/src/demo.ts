@@ -50,6 +50,10 @@ let profile: Profile = {
   watchlist: ["Harbour Robotics", "Clearwater Instruments"],
   searches: [{name: "Mechanical and robotics co-ops", keywords: "mechanical, robotics", location: "", term: "", preferred: "", alerts: true}],
   experience: "Mechanical engineering student with experience designing test fixtures and validating prototypes.",
+  skills: ["CAD", "prototype validation", "firmware"],
+  referral_school: "University of British Columbia, UBC",
+  referral_experience: "prototype development",
+  referral_priority: "experience",
   resume_repo: "", resume_branch: "main", resume_entry: "main.tex", cover_repo: "", cover_branch: "main", cover_entry: "main.tex",
 };
 let preferences = {auto_shortlist: true, draft: false, threshold: 75, smart: true, prepare: true,
@@ -164,6 +168,11 @@ function applicationDetails(id: string): Details {
     history: [{event: "Saved as " + app.status, at: job.first_seen}], ai: []};
 }
 
+function sampleSkills(job: Job) {
+  const text = (job.title + " " + (job.description ?? "")).toLowerCase();
+  return (profile.skills ?? []).filter(skill => text.includes(skill.toLowerCase()));
+}
+
 export function demoRequest(path: string, method: string, body?: object): unknown {
   const {pathname, searchParams: query} = new URL(path, window.location.origin);
   const route = pathname.replace(/^\/api\/owner\//, "/");
@@ -191,19 +200,27 @@ export function demoRequest(path: string, method: string, body?: object): unknow
       case "/interviews": return applications.filter(item => item.job_id === jobs[1].id || item.status === "offer")
         .map(item => ({...item, interviewed_at: jobs[1].first_seen, invitations: item.job_id === jobs[1].id ? [reply] : []}));
       case "/referrals": return {contacts};
-      case "/referrals/people": return {partial: false, people: query.get("company") ? [{
+      case "/referrals/people": return {partial: false, school: profile.referral_school?.split(",")[0], people: query.get("company") ? [{
         name: "Taylor Patel", url: "https://example.com", headline: "Mechanical Design Engineer",
-        snippet: "Works in prototype development · UBC alum", team_match: true, ubc: true,
+        snippet: "Works in prototype development · UBC alum", team_match: true,
+        school_match: /\bUBC\b|University of British Columbia/i.test(profile.referral_school ?? ""),
+        experience_matches: (profile.referral_experience ?? "").split(",").map(term => term.trim()).filter(term =>
+          term && "works in prototype development".includes(term.toLowerCase())),
       }] : []};
       case "/screening": return {preferences, reviews: [{id: jobs[0].id, title: jobs[0].title, company: jobs[0].company,
-        verdict: "apply", score: 89, summary: "Fixture design and prototype testing match the role."}],
-      roles: jobs.slice(0, 5).map((job, index) => ({...job, score: 89 - index * 5, reasons: ["Matches your engineering interests"]}))};
+        verdict: "apply", score: 89, summary: "Fixture design and prototype testing match the role.", matched_skills: sampleSkills(jobs[0])}],
+      roles: jobs.slice(0, 5).map((job, index) => {
+        const matched_skills = sampleSkills(job);
+        const bonus = Math.min(profile.scoring?.skill_cap ?? 30, (profile.scoring?.skill ?? 10) * matched_skills.length);
+        return {...job, score: Math.min(100, 65 - index * 5 + bonus), reasons: ["Matches your engineering interests"], matched_skills};
+      })};
       case "/background": return {worker: {status: "connected"}, usage: demoData(today).report(today, 7).usage,
         collection: {interval_minutes: intervalMinutes, requested: 0, started: now, finished: now},
         tasks: [{id: "sample-task", status: "done", title: jobs[0].title, company: jobs[0].company, job_id: jobs[0].id}]};
     }
     const job = jobs.find(item => route === "/api/jobs/" + item.id);
-    if (job) return {...job, contacts: contacts.filter(person => person.company === job.company), versions: []};
+    if (job) return {...job, matched_skills: sampleSkills(job),
+      contacts: contacts.filter(person => person.company === job.company), versions: []};
     const appId = /^\/applications\/([^/]+)$/.exec(route)?.[1];
     if (appId) return applicationDetails(appId);
     const docId = /^\/documents\/([^/]+)\/source$/.exec(route)?.[1];
