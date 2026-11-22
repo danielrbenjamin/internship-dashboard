@@ -1,4 +1,5 @@
 import json
+import secrets
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from types import SimpleNamespace
@@ -16,7 +17,10 @@ from backend.models import Edit
 
 
 def workspace(tmp_path):
-    settings = Settings(data_dir=tmp_path, owner_subject="owner")
+    settings = Settings(
+        _env_file=None, data_dir=tmp_path, codex_home=tmp_path / "codex", owner_subject="owner",
+        session_secret=secrets.token_urlsafe(32),
+    )
     db = Database(tmp_path / "dashboard.sqlite3")
     import_jobs(db, "fixture", [{**POSTING, "title": "Mechanical Engineering Intern"}])
     job = db.one("SELECT * FROM jobs")

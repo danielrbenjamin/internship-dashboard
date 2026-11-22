@@ -1,4 +1,5 @@
 
+import secrets
 import time
 from datetime import UTC, datetime, timedelta
 
@@ -14,14 +15,18 @@ from backend.discovery import run_source
 from backend.main import create_app
 from backend.mcp import SCOPE
 
-SECRET = "test-only-session-key-that-is-at-least-32"
 ORIGIN = {"Origin": "http://localhost:8000"}
 
 
 @pytest.fixture
 def app(tmp_path):
-    return create_app(Settings(data_dir=tmp_path, session_secret=SECRET, owner_subject="google|owner",
-                               auth0_domain="example.auth0.com"))
+    return create_app(Settings(
+        _env_file=None,
+        data_dir=tmp_path,
+        session_secret=secrets.token_urlsafe(32),
+        owner_subject="google|owner",
+        auth0_domain="example.auth0.com",
+    ))
 
 
 def signed_session(app, client, subject, sid="session"):
@@ -30,7 +35,7 @@ def signed_session(app, client, subject, sid="session"):
 
     app.state.db.execute("INSERT INTO sessions VALUES (?,?,?)", (sid, subject, time.time() + 3600))
     value = base64.b64encode(json.dumps({"sid": sid}).encode())
-    client.cookies.set("session", TimestampSigner(SECRET).sign(value).decode())
+    client.cookies.set("session", TimestampSigner(app.state.settings.session_secret).sign(value).decode())
 
 
 def test_catalog_posting_window_and_overlapping_disciplines(app):
@@ -194,6 +199,38 @@ def test_analytics_and_cover_letters_remain_owner_scoped(app, monkeypatch):
     assert owner.get(download + "/pdf").content.startswith(b"%PDF")
     assert owner.get(route).json()["cover_letters"][0]["content"] == letter["content"]
     assert owner.post(route + "/ai?cover_letter=true", headers=ORIGIN, content=b"").status_code == 422
+
+def test_shortlist_uses_only_saved_matching_criteria(app):
+    owner = TestClient(app)
+    signed_session(app, owner, "google|owner")
+    import_jobs(app.state.db, "fixture", [{
+        **POSTING, "title": "Mechanical Intern", "description": "Use SolidWorks for design.",
+    }])
+    search = {"name": "Mechanical", "keywords": "mechanical"}
+    owner.put("/api/owner/settings", headers=ORIGIN, json={
+        "experience": "Designed fixtures with SolidWorks.", "searches": [search],
+    }).raise_for_status()
+    role, = owner.get("/api/owner/screening").json()["roles"]
+    assert role["score"] == 65
+    assert role["reasons"] == ["Saved search: Mechanical", "Title: mechanical"]
+    assert role["matched_skills"] == []
+
+    owner.put("/api/owner/settings", headers=ORIGIN, json={
+        "skills": ["SolidWorks", "solidworks", "FEA"], "searches": [search],
+        "scoring": {"skill": 20, "skill_cap": 12},
+    }).raise_for_status()
+    role, = owner.get("/api/owner/screening").json()["roles"]
+    assert role["score"] == 77
+    assert len(role["matched_skills"]) == 1
+    assert role["matched_skills"][0].casefold() == "solidworks"
+
+    owner.put("/api/owner/settings", headers=ORIGIN, json={
+        "searches": [{**search, "preferred": "SolidWorks"}],
+    }).raise_for_status()
+    role, = owner.get("/api/owner/screening").json()["roles"]
+    assert role["score"] == 80
+    assert "Preferred: SolidWorks" in role["reasons"]
+
 
 def test_rank_to_application_reply_and_deadline(app):
     from backend.workflows import Reply, store_reply
@@ -391,6 +428,9 @@ def test_referral_people_are_private_and_ranked(app, monkeypatch):
     app.state.settings.exa_api_key = ""
     assert owner.get(path).status_code == 503
     app.state.settings.exa_api_key = "fixture-key"
+    owner.put("/api/owner/settings", headers=ORIGIN, json={
+        "referral_school": "University of British Columbia, UBC",
+    }).raise_for_status()
     mock_rows = [
         {"url": "https://www.linkedin.com/in/general", "title": "General Person - Acme"},
         {"url": "https://ca.linkedin.com/in/alumni", "title": "Alumni Person - Acme", "highlights": ["University of British Columbia"]},
@@ -398,6 +438,8 @@ def test_referral_people_are_private_and_ranked(app, monkeypatch):
         {"url": "https://www.linkedin.com/in/team/?trk=duplicate", "title": "Team Person - Acme", "highlights": ["UBC"]},
         {"url": "https://linkedin.com.example.org/in/unrelated", "title": "Mechanical Engineer at Acme"},
         {"url": "https://www.linkedin.com/in/other", "title": "Other Person - Other Employer", "highlights": ["Mechanical Engineer"]},
+        {"url": "https://www.linkedin.com/in/experience", "title": "Experienced Person - Acme",
+         "highlights": ["Led prototype testing"]},
     ]
     queries = []
     client = httpx.AsyncClient
@@ -419,8 +461,16 @@ def test_referral_people_are_private_and_ranked(app, monkeypatch):
     assert len(queries) == 2
     assert any("Acme" in query and "Mechanical" in query for query in queries)
     assert any("Acme" in query and "University of British Columbia" in query for query in queries)
-    assert [p["name"] for p in result] == ["Team Person", "Alumni Person", "General Person"]
-    assert result[0]["team_match"] and result[0]["ubc"]
+    assert [p["name"] for p in result] == ["Team Person", "Alumni Person", "General Person", "Experienced Person"]
+    assert result[0]["team_match"] and result[0]["school_match"]
+    queries.clear()
+    owner.put("/api/owner/settings", headers=ORIGIN, json={
+        "referral_experience": "prototype testing", "referral_priority": "experience",
+    }).raise_for_status()
+    experience_first = owner.get(path).json()["people"][0]
+    assert experience_first["name"] == "Experienced Person"
+    assert experience_first["experience_matches"] == ["prototype testing"]
+    assert any("prototype testing" in query for query in queries)
     reply = owner.post("/api/owner/contacts", headers=ORIGIN, json={
         "name": result[0]["name"], "linkedin": result[0]["url"], "company": "Acme",
     })

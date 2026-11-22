@@ -7,6 +7,7 @@ import type {Alert, Application, CatalogSource, Job, Profile} from "./api";
 import {PostingText} from "./PostingText";
 import {Overview} from "./Overview";
 import {Analytics} from "./Analytics";
+import {DemoTour} from "./DemoTour";
 import {Interviews} from "./Interviews";
 
 import {Navigation} from "./Navigation";
@@ -56,6 +57,7 @@ function App() {
   }, [sidebarCollapsed]);
   const [session, setSession] = useState<{owner: boolean; login_available: boolean;account?:{name?:string;email?:string;picture?:string}}>();
   const [route, setRoute] = useState(readRoute);
+  const [tourOpen, setTourOpen] = useState(() => demoMode && readRoute().view === "Overview");
   const {view, job: selected = "", tab: settingsTab = "Profile", company: referralCompany = "",
     team: referralTeam = "", reply: focusItem = ""} = route;
   const [signInNotice, setSignInNotice] = useState(false);
@@ -287,7 +289,8 @@ function App() {
     <div className={["layout", sidebarCollapsed && "sidebar-collapsed", expandedPane && "catalog-expanded"].filter(Boolean).join(" ")}>
       <a className="skip" href="#main">Skip to content</a>
       <Navigation collapsed={sidebarCollapsed} toggleSidebar={()=>setSidebarCollapsed(value=>!value)} openSettings={tab=>navigate("Settings",{tab})} signInUrl={signInUrl} view={view} navigate={navigate} account={session?.account} owner={Boolean(owner)} loginAvailable={Boolean(session?.login_available)}
-        signInHelp={signInNotice} onSignIn={() => setSignInNotice(!signInNotice)} unread={unread}
+        signInHelp={signInNotice} onSignIn={() => setSignInNotice(!signInNotice)} unread={unread} reminderCount={reminders.length}
+        startDemoTour={() => {navigate("Overview"); setTourOpen(true);}}
         onSignOut={() => {void api<{redirect: string}>("/auth/logout", "POST")
           .then(result => window.location.assign(result.redirect)).catch(showError);}} />
       <main id="main" tabIndex={-1} className={isCatalog ? "panel catalog jobs-page" + (expandedPane ? " catalog-focus-" + expandedPane : "") : view === "Materials" || view === "Screening" ? "panel page jobs-page" : "panel page"}>
@@ -296,7 +299,6 @@ function App() {
           <p>Set the Auth0 web application details and your owner subject in the local environment, then restart the app.</p>
           <p>Local callback <code>{window.location.origin}/auth/callback</code></p>
         </section>}
-        {owner && !!reminders.length && view!=="Replies" && <p className="notice"><button onClick={()=>navigate("Replies")}>{reminders.length} due or overdue · {reminders[0].subject}</button></p>}
         {!!message && <p className="notice" role="alert">{message} <button onClick={() => setMessage("")}>Dismiss</button></p>}
         {protectedPage && !owner ? <section className="desk-page">
           {session ? <>
@@ -306,8 +308,8 @@ function App() {
         </section> : view === "Needs" ? <NeedsYou open={openPriority}/> :
         view === "Analytics" ? <Analytics sourceName={sourceLabel} openSource={openSource}/> :
         view === "Interviews" ? <Interviews open={id=>navigate("Materials",{job:id})} openEmail={reply=>navigate("Replies",{reply})}/> :
-        view === "Background" ? <Background open={id=>navigate("Materials",{job:id})}/> : view === "Referrals" ? <Referrals apps={applications} initialCompany={referralCompany} initialTeam={referralTeam}/> : view === "Screening" ? <Screening codexReady={codexReady} connectCodex={openCodexSettings} materials={id=>navigate("Materials",{job:id})} settings={()=>navigate("Settings",{tab:"Discovery"})} open={id=>navigate("Browse",{job:id})}/> :
-        view === "Replies" ? <Replies notifications={deadlineNotifications} focus={focusItem} apps={applications} connect={()=>navigate("Settings",{tab:"Email inboxes"})}/> : view === "Overview" ? <Overview openPriority={openPriority} name={session?.account?.name} tasks={owner?[{label:"Ready to submit",value:applications.filter(a=>a.status==="ready").length,open:()=>{navigate("Saved");setStatusFilter("ready")}},{label:"Due or overdue",value:reminders.length,open:()=>navigate("Replies")},{label:"New matches",value:unread,open:()=>navigate("Alerts")}]:[]} owner={Boolean(owner)} sourceName={sourceLabel}
+        view === "Background" ? <Background open={id=>navigate("Materials",{job:id})}/> : view === "Referrals" ? <Referrals apps={applications} initialCompany={referralCompany} initialTeam={referralTeam}/> : view === "Screening" ? <Screening codexReady={codexReady} connectCodex={openCodexSettings} materials={id=>navigate("Materials",{job:id})} settings={()=>navigate("Settings",{tab:"Discovery"})} editSkills={()=>navigate("Settings",{tab:"Profile"})} open={id=>navigate("Browse",{job:id})}/> :
+        view === "Replies" ? <Replies notifications={deadlineNotifications} focus={focusItem} apps={applications} connect={()=>navigate("Settings",{tab:"Email inboxes"})}/> : view === "Overview" ? <Overview openPriority={openPriority} name={session?.account?.name} tasks={owner?[{label:"Ready to submit",value:applications.filter(a=>a.status==="ready").length,open:()=>{navigate("Saved");setStatusFilter("ready")}},{label:"Deadlines",value:reminders.length,open:()=>navigate("Replies")},{label:"New matches",value:unread,open:()=>navigate("Alerts")}]:[]} owner={Boolean(owner)} sourceName={sourceLabel}
           openCatalog={() => navigate("Browse")}
           openSource={openSource} /> :
         view === "Materials" ? <section className="materials-page"><PageHeader title="Application materials" />
@@ -451,6 +453,7 @@ function App() {
                   <div><dt>Last seen</dt><dd>{formatDate(detail.last_seen)}</dd></div>
                   <div><dt>Source</dt><dd>{sourceLabel(detail.source)}</dd></div>
                   {detail.term && <div><dt>Term</dt><dd>{detail.term}</dd></div>}</dl>
+                {!!detail.matched_skills?.length && <p className="muted">Matched skills · {detail.matched_skills.join(", ")}</p>}
                 {!detail.active && <p className="notice">This posting is no longer listed by its source.</p>}
                 {coverage.find(source => source.id === detail.source)?.stale &&
                   <p className="notice">The latest source check failed. Confirm this opening on the employer site.</p>}
@@ -467,6 +470,7 @@ function App() {
         </>}
       </main>
     </div>
+    {tourOpen && <DemoTour navigate={({view: target, ...options}) => navigate(target, options)} close={() => setTourOpen(false)} />}
   </>;
 }
 

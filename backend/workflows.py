@@ -16,7 +16,7 @@ from pydantic import AwareDatetime, Field
 from .auth import require_owner
 from .catalog import RECENT, canonical_url, company_key, matches
 from .db import now
-from .models import Input
+from .models import Input, ScoringWeights
 from .posting_text import posting_markdown
 
 Owner = Annotated[str, Depends(require_owner)]
@@ -50,10 +50,20 @@ class Triage(Input):
     done: bool = False
 
 
+def matching_skills(job, skills):
+    if not skills:
+        return []
+    text = job["title"] + "\n" + posting_markdown(job["description"])
+    unique = {skill.casefold(): skill for skill in skills}
+    return [skill for skill in unique.values()
+            if re.search(r"(?<![\w+#])" + re.escape(skill) + r"(?![\w+#])", text, re.IGNORECASE)]
+
+
 def ranked(db, owner):
     profile = db.settings(owner)
     terms = profile.get("searches", [])
     watched = {company_key(name) for name in profile.get("watchlist", [])}
+    weights = ScoringWeights.model_validate(profile.get("scoring", {}))
     if not terms and not watched:
         return []
     jobs = db.all(
@@ -68,10 +78,10 @@ def ranked(db, owner):
         favorite = company_key(job["company"]) in watched
         if not rules and not favorite:
             continue
-        score, reasons = (50, ["Watchlisted employer"]) if favorite else (0, [])
+        score, reasons = (weights.watchlist, ["Watchlisted employer"]) if favorite else (0, [])
         if rules:
             reasons.append("Saved search: " + ", ".join(s["name"] for s in rules))
-            score += 50
+            score += weights.saved_search
             best = (0, [])
             for rule in rules:
                 evidence = []
@@ -86,44 +96,14 @@ def ranked(db, owner):
                 for word in rule["preferred"].split(","):
                     if word.strip() and word.strip().casefold() in job["description"].casefold():
                         evidence.append("Preferred: " + word.strip())
-                points = min(50, 15 * len(evidence))
+                points = min(weights.search_detail_cap, weights.search_detail * len(evidence))
                 if points > best[0]:
                     best = points, evidence
             score += best[0]
             reasons.extend(best[1])
-        skills = (
-            "CAD",
-            "SolidWorks",
-            "CATIA",
-            "Fusion 360",
-            "C++",
-            "Python",
-            "MATLAB",
-            "GD&T",
-            "FEA",
-            "CFD",
-            "PCB",
-            "Altium",
-            "FPGA",
-            "Verilog",
-            "ROS",
-            "CNC",
-            "Simulink",
-            "PLC",
-            "embedded systems",
-        )
-        overlap = [
-            skill
-            for skill in skills
-            if all(
-                re.search(r"(?<!\w)" + re.escape(skill) + r"(?!\w)", text, re.IGNORECASE)
-                for text in (profile.get("experience", ""), job["title"] + " " + job["description"])
-            )
-        ]
-        if overlap:
-            score += min(30, 10 * len(overlap))
-            reasons.append("In your experience and the posting: " + ", ".join(overlap))
-        results.append((min(100, score), reasons, job))
+        skills = matching_skills(job, profile.get("skills", []))
+        score += min(weights.skill_cap, weights.skill * len(skills))
+        results.append((min(100, score), reasons, job, skills))
     return sorted(results, key=lambda row: (row[0], row[2]["posted_on"], row[2]["id"]), reverse=True)
 
 
@@ -158,7 +138,7 @@ def auto_screen(db, owner):
     if config.smart and not experience:
         return
     created = 0
-    for score, reasons, job in ranked(db, owner):
+    for score, reasons, job, skills in ranked(db, owner):
         if score < config.threshold:
             break
         if config.smart:
@@ -176,7 +156,9 @@ def auto_screen(db, owner):
             if inserted:
                 conn.execute(
                     "INSERT INTO history(application_id,owner,event,at) VALUES(?,?,?,?)",
-                    (app_id, owner, f"Shortlisted ({score}/100). " + ". ".join(reasons), now()),
+                    (app_id, owner, f"Shortlisted ({score}/100). " + ". ".join(
+                        [*reasons, "Matched skills: " + ", ".join(skills)] if skills else reasons
+                    ), now()),
                 )
                 created += 1
                 if config.smart or (config.draft and job["description"]):
@@ -443,25 +425,30 @@ def install_workflows(app, db, settings):
 
     @app.get("/api/owner/screening")
     def screening(owner: Owner):
-        return {
-            "preferences": prefs(db, owner),
-            "reviews": db.all("""WITH reports AS (
+        reviews = db.all("""WITH reports AS (
                     SELECT application_id,created_at,CASE WHEN json_valid(result) THEN result ELSE '{}' END AS report
                     FROM ai_tasks WHERE owner=? AND status='done'
                 ) SELECT j.id,j.title,j.company,
                     json_extract(report,'$.verdict') AS verdict,
                     json_extract(report,'$.match_score') AS score,
-                    json_extract(report,'$.recruiter_read') AS summary
+                    json_extract(report,'$.recruiter_read') AS summary,a.posting
                 FROM reports JOIN applications a ON a.id=application_id JOIN jobs j ON j.id=a.job_id
                 WHERE a.owner=? AND json_extract(report,'$.screen')=1
-                ORDER BY created_at DESC LIMIT 50""", (owner,owner)),
+                ORDER BY created_at DESC LIMIT 50""", (owner,owner))
+        skills = db.settings(owner).get("skills", [])
+        for review in reviews:
+            review["matched_skills"] = matching_skills(json.loads(review.pop("posting")), skills)
+        return {
+            "preferences": prefs(db, owner),
+            "reviews": reviews,
             "roles": [
                 {
                     **{k: j[k] for k in ("id", "title", "company", "location", "posted_on")},
                     "score": s,
                     "reasons": r,
+                    "matched_skills": skills,
                 }
-                for s, r, j in ranked(db, owner)[:100]
+                for s, r, j, skills in ranked(db, owner)[:100]
             ],
         }
 

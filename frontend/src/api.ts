@@ -4,11 +4,18 @@ import {demoAsset, demoPdf} from "./demoAssets";
 export type Job = {
   id: string; title: string; company: string; location: string; url: string;
   posted_on?: string | null; first_seen: string; last_seen: string; source: string; requisition: string; active: number;
-  contacts?:{id:string;name:string}[];term?: string; description?: string; versions?: { fingerprint: string; seen_at: string; payload: { description: string } }[];
+  contacts?:{id:string;name:string}[];term?: string; description?: string; matched_skills?: string[]; versions?: { fingerprint: string; seen_at: string; payload: { description: string } }[];
 };
 export type Search = {name: string; keywords: string; location: string; term: string; preferred: string; alerts: boolean};
+export type ScoringWeights = {saved_search: number; watchlist: number; search_detail: number; search_detail_cap: number;
+  skill: number; skill_cap: number};
 export type Profile = {
   watchlist: string[]; searches: Search[]; experience: string; resume_repo: string;
+  skills?: string[];
+  scoring?: ScoringWeights;
+  referral_school?: string;
+  referral_experience?: string;
+  referral_priority?: "team" | "school" | "experience";
   cover_repo?:string;cover_entry?:string;cover_branch?:string;resume_branch: string; resume_entry: string;
 };
 export type Application = {

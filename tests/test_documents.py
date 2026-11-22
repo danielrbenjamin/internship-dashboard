@@ -1,4 +1,5 @@
 
+import io
 import tempfile
 import unittest
 import zipfile
@@ -6,8 +7,10 @@ from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import patch
 
+import httpx
+
 from backend.db import Database
-from backend.documents import document_root, safe_path, store_version
+from backend.documents import document_root, fetch_resume, safe_path, store_version, unpack_template
 
 
 class DocumentTests(unittest.TestCase):
@@ -43,3 +46,19 @@ class DocumentTests(unittest.TestCase):
         for name in ("../resume.tex", "/resume.tex", "C:/resume.tex", "documents/../resume.tex"):
             with self.subTest(name=name), self.assertRaises(ValueError):
                 safe_path(name)
+
+    def test_wrong_archive_entry_reports_the_actual_filename(self):
+        archive = io.BytesIO()
+        with zipfile.ZipFile(archive, "w") as bundle:
+            bundle.writestr("repo-main/Cover_Letter.tex", "Example")
+        with tempfile.TemporaryDirectory() as temporary, self.assertRaisesRegex(ValueError, "Cover_Letter.tex"):
+            unpack_template(Path(temporary), safe_path("cover_letter.tex"), "f" * 40, archive.getvalue())
+
+    def test_github_not_found_points_to_branch_and_private_repo_access(self):
+        client = httpx.Client
+        transport = httpx.MockTransport(lambda request: httpx.Response(404))
+        profile = {"resume_repo": "example/private-template", "resume_branch": "main", "resume_entry": "letter.tex"}
+        with tempfile.TemporaryDirectory() as temporary, patch.object(
+            httpx, "Client", lambda **kwargs: client(transport=transport, **kwargs)
+        ), self.assertRaisesRegex(ValueError, "branch 'main'.*GITHUB_TOKEN Contents read access"):
+            fetch_resume(Path(temporary), profile, "")
