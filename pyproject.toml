@@ -1,0 +1,29 @@
+[project]
+name = "internship-dashboard"
+version = "0.1.0"
+description = "Public internship discovery and a private application workspace"
+requires-python = ">=3.12"
+dependencies = [
+  "openpyxl>=3.1,<4", "defusedxml>=0.7,<1", "cryptography>=42",
+  "fastapi>=0.115,<1", "uvicorn>=0.34,<1", "httpx>=0.28,<1",
+  "authlib>=1.6,<2", "itsdangerous>=2.2,<3", "PyJWT[crypto]>=2.10,<3",
+  "pydantic-settings>=2.8,<3", "beautifulsoup4>=4.13,<5", "markdownify>=1.2,<2",
+  "tzdata>=2025.1; platform_system == 'Windows'",
+]
+
+[project.optional-dependencies]
+dev = ["pytest>=8.3,<10", "ruff>=0.11,<1"]
+boards = ["python-jobspy>=1.4,<2"]
+
+[build-system]
+requires = ["setuptools>=77"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools]
+packages = ["backend"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+
+[tool.ruff]
+line-length = 110

@@ -1,0 +1,53 @@
+
+services:
+  app:
+    build:
+      context: .
+      target: app
+    env_file: .env
+    environment:
+      DATA_DIR: /app/data
+    volumes:
+      - dashboard-data:/app/data
+    ports:
+      - "127.0.0.1:8000:8000"
+    read_only: true
+    tmpfs: ["/tmp:mode=1777,size=256m"]
+    cap_drop: [ALL]
+    security_opt: ["no-new-privileges:true"]
+    pids_limit: 128
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/api/health', timeout=2)"]
+      interval: 30s
+      timeout: 4s
+      retries: 3
+
+  worker:
+    build:
+      context: .
+      target: worker
+    environment:
+      APP_URL: ${APP_URL}
+      DATA_DIR: /app/data
+      SESSION_SECRET: ${SESSION_SECRET:?Set SESSION_SECRET in .env}
+      OWNER_SUBJECT: ${OWNER_SUBJECT:-}
+      WORKER_INTERVAL: ${WORKER_INTERVAL:-300}
+      MAIL_HOST: ${MAIL_HOST:-}
+      MAIL_USER: ${MAIL_USER:-}
+      MAIL_PASSWORD: ${MAIL_PASSWORD:-}
+      MAIL_FOLDER: ${MAIL_FOLDER:-Applications}
+      CODEX_HOME: /codex
+    volumes:
+      - dashboard-data:/app/data
+      - codex-login:/codex
+    read_only: true
+    tmpfs: ["/tmp:mode=1777,size=256m"]
+    cap_drop: [ALL]
+    security_opt: ["no-new-privileges:true"]
+    pids_limit: 128
+    restart: unless-stopped
+
+volumes:
+  dashboard-data:
+  codex-login:

@@ -1,0 +1,40 @@
+# Runtime configuration and credentials
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+*.p12
+auth.json
+.codex/
+.aws/
+.agents/
+# Private candidate data, databases, outputs, and backups
+data/
+private/
+backups/
+*.db
+*.db-*
+*.sqlite*
+*.pdf
+*.zip
+*.log
+# Dependencies and build/cache files
+.venv/
+.uv-cache/
+.npm-cache/
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.ruff_cache/
+node_modules/
+dist/
+coverage/
+*.egg-info/
+build/
+playwright-report/
+test-results/
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/

@@ -1,0 +1,839 @@
+[
+  {
+    "id": "google",
+    "type": "google",
+    "company": "Google"
+  },
+  {
+    "id": "apple",
+    "type": "apple",
+    "company": "Apple"
+  },
+  {
+    "id": "disney",
+    "type": "disney",
+    "company": "Disney"
+  },
+  {
+    "id": "boards:simplify",
+    "type": "simplify",
+    "company": "SimplifyJobs",
+    "interval": 3600,
+    "discover_boards": true
+  },
+  {
+    "id": "boards:mechanical-2027",
+    "type": "mechanical_index",
+    "label": "2027 Mechanical Engineering Internships",
+    "homepage": "https://github.com/thebargon/2027-Mechanical-Engineering-Internships",
+    "url": "https://raw.githubusercontent.com/thebargon/2027-Mechanical-Engineering-Internships/main/data/listings.json",
+    "interval": 21600,
+    "discover_boards": true
+  },
+  {
+    "id": "amd",
+    "type": "amd",
+    "company": "AMD"
+  },
+  {
+    "id": "amazon",
+    "type": "amazon",
+    "company": "Amazon",
+    "interval": 1800
+  },
+  {
+    "id": "nvidia",
+    "type": "workday",
+    "host": "nvidia.wd5.myworkdayjobs.com",
+    "board": "NVIDIAExternalCareerSite",
+    "company": "NVIDIA",
+    "homepage": "https://nvidia.wd5.myworkdayjobs.com/NVIDIAExternalCareerSite",
+    "interval": 3600
+  },
+  {
+    "id": "gm",
+    "type": "workday",
+    "host": "generalmotors.wd5.myworkdayjobs.com",
+    "board": "Careers_GM",
+    "company": "General Motors",
+    "homepage": "https://generalmotors.wd5.myworkdayjobs.com/Careers_GM",
+    "interval": 3600
+  },
+  {
+    "id": "bosch",
+    "type": "smartrecruiters",
+    "board": "BoschGroup",
+    "company": "Bosch",
+    "homepage": "https://jobs.bosch.com/",
+    "interval": 3600
+  },
+  {
+    "id": "neuralink",
+    "type": "greenhouse",
+    "board": "neuralink",
+    "company": "Neuralink"
+  },
+  {
+    "id": "zipline",
+    "type": "greenhouse",
+    "board": "flyzipline",
+    "company": "Zipline"
+  },
+  {
+    "id": "boards:jobright-engineering",
+    "type": "jobright",
+    "label": "Jobright engineering internships",
+    "homepage": "https://github.com/jobright-ai/2026-Engineer-Internship",
+    "interval": 21600
+  },
+  {
+    "id": "boards:canadian-internships",
+    "type": "canadian_list",
+    "label": "Canadian Internship List",
+    "homepage": "https://github.com/Bobwillrule/Canadian-Internship-List",
+    "interval": 21600,
+    "discover_boards": true
+  },
+  {
+    "id": "directory:simplify",
+    "type": "board_index",
+    "label": "Simplify employer boards",
+    "url": "https://raw.githubusercontent.com/SimplifyJobs/New-Grad-Positions/dev/.github/scripts/listings.json",
+    "homepage": "https://github.com/SimplifyJobs/New-Grad-Positions",
+    "discover_boards": true,
+    "interval": 86400
+  },
+  {
+    "id": "directory:speedy",
+    "type": "board_index",
+    "label": "SpeedyApply employer boards",
+    "url": "https://raw.githubusercontent.com/speedyapply/2027-SWE-College-Jobs/main/NEW_GRAD_USA.md",
+    "homepage": "https://github.com/speedyapply/2027-SWE-College-Jobs",
+    "discover_boards": true,
+    "interval": 86400
+  },
+  {
+    "id": "directory:jobops",
+    "type": "board_index",
+    "label": "JobOps employer boards",
+    "url": "https://raw.githubusercontent.com/DaKheera47/job-ops/HEAD/orchestrator/src/server/config/career-boards-greenhouse.json",
+    "homepage": "https://github.com/DaKheera47/job-ops",
+    "discover_boards": true,
+    "interval": 86400
+  },
+  {
+    "id": "boards:indeed-ca",
+    "type": "jobspy",
+    "sites": [
+      "indeed"
+    ],
+    "label": "Indeed · CA · mechanical engineering intern",
+    "query": "mechanical engineering intern",
+    "location": "Canada",
+    "country": "Canada",
+    "homepage": "https://ca.indeed.com/jobs?q=mechanical+engineering+intern",
+    "limit": 40,
+    "interval": 21600,
+    "discover_boards": true
+  },
+  {
+    "id": "boards:indeed-us",
+    "type": "jobspy",
+    "sites": [
+      "indeed"
+    ],
+    "label": "Indeed · US · mechanical engineering intern",
+    "query": "mechanical engineering intern",
+    "location": "United States",
+    "country": "USA",
+    "homepage": "https://www.indeed.com/jobs?q=mechanical+engineering+intern",
+    "limit": 40,
+    "interval": 21600,
+    "discover_boards": true
+  },
+  {
+    "id": "boards:glassdoor-ca",
+    "type": "jobspy",
+    "sites": [
+      "glassdoor"
+    ],
+    "label": "Glassdoor · CA · mechanical engineering intern",
+    "query": "mechanical engineering intern",
+    "location": "Canada",
+    "country": "Canada",
+    "homepage": "https://www.glassdoor.ca/Job/index.htm",
+    "limit": 40,
+    "interval": 21600,
+    "discover_boards": true
+  },
+  {
+    "id": "boards:glassdoor-us",
+    "type": "jobspy",
+    "sites": [
+      "glassdoor"
+    ],
+    "label": "Glassdoor · US · mechanical engineering intern",
+    "query": "mechanical engineering intern",
+    "location": "United States",
+    "country": "USA",
+    "homepage": "https://www.glassdoor.com/Job/index.htm",
+    "limit": 40,
+    "interval": 21600,
+    "discover_boards": true
+  },
+  {
+    "id": "boards:zip_recruiter-us",
+    "type": "jobspy",
+    "sites": [
+      "zip_recruiter"
+    ],
+    "label": "ZipRecruiter · US · mechanical engineering intern",
+    "query": "mechanical engineering intern",
+    "location": "United States",
+    "country": "USA",
+    "homepage": "https://www.ziprecruiter.com/Jobs/Mechanical-Engineering-Intern",
+    "limit": 40,
+    "interval": 21600,
+    "discover_boards": true
+  },
+  {
+    "id": "boards:linkedin-ca",
+    "type": "jobspy",
+    "sites": [
+      "linkedin"
+    ],
+    "label": "LinkedIn · CA · mechanical engineering intern",
+    "query": "mechanical engineering intern",
+    "location": "Canada",
+    "country": "Canada",
+    "homepage": "https://www.linkedin.com/jobs/",
+    "limit": 40,
+    "interval": 21600,
+    "discover_boards": true
+  },
+  {
+    "id": "boards:linkedin-us",
+    "type": "jobspy",
+    "sites": [
+      "linkedin"
+    ],
+    "label": "LinkedIn · US · mechanical engineering intern",
+    "query": "mechanical engineering intern",
+    "location": "United States",
+    "country": "USA",
+    "homepage": "https://www.linkedin.com/jobs/",
+    "limit": 40,
+    "interval": 21600,
+    "discover_boards": true
+  },
+  {
+    "id": "boards:google-ca",
+    "type": "jobspy",
+    "sites": [
+      "google"
+    ],
+    "label": "Google Jobs · CA · mechanical engineering intern",
+    "query": "mechanical engineering intern",
+    "location": "Canada",
+    "country": "Canada",
+    "homepage": "https://www.google.com/search?q=engineering+internship+jobs",
+    "limit": 40,
+    "interval": 21600,
+    "discover_boards": true
+  },
+  {
+    "id": "boards:google-us",
+    "type": "jobspy",
+    "sites": [
+      "google"
+    ],
+    "label": "Google Jobs · US · mechanical engineering intern",
+    "query": "mechanical engineering intern",
+    "location": "United States",
+    "country": "USA",
+    "homepage": "https://www.google.com/search?q=engineering+internship+jobs",
+    "limit": 40,
+    "interval": 21600,
+    "discover_boards": true
+  },
+  {
+    "id": "boards:indeed-ca-coop",
+    "type": "jobspy",
+    "sites": [
+      "indeed"
+    ],
+    "label": "Indeed · CA · engineering co-op",
+    "query": "engineering co-op",
+    "location": "Canada",
+    "country": "Canada",
+    "homepage": "https://ca.indeed.com/jobs?q=mechanical+engineering+intern",
+    "limit": 40,
+    "interval": 21600,
+    "discover_boards": true
+  },
+  {
+    "id": "boards:indeed-us-coop",
+    "type": "jobspy",
+    "sites": [
+      "indeed"
+    ],
+    "label": "Indeed · US · engineering co-op",
+    "query": "engineering co-op",
+    "location": "United States",
+    "country": "USA",
+    "homepage": "https://www.indeed.com/jobs?q=mechanical+engineering+intern",
+    "limit": 40,
+    "interval": 21600,
+    "discover_boards": true
+  },
+  {
+    "id": "boards:glassdoor-ca-coop",
+    "type": "jobspy",
+    "sites": [
+      "glassdoor"
+    ],
+    "label": "Glassdoor · CA · engineering co-op",
+    "query": "engineering co-op",
+    "location": "Canada",
+    "country": "Canada",
+    "homepage": "https://www.glassdoor.ca/Job/index.htm",
+    "limit": 40,
+    "interval": 21600,
+    "discover_boards": true
+  },
+  {
+    "id": "boards:glassdoor-us-coop",
+    "type": "jobspy",
+    "sites": [
+      "glassdoor"
+    ],
+    "label": "Glassdoor · US · engineering co-op",
+    "query": "engineering co-op",
+    "location": "United States",
+    "country": "USA",
+    "homepage": "https://www.glassdoor.com/Job/index.htm",
+    "limit": 40,
+    "interval": 21600,
+    "discover_boards": true
+  },
+  {
+    "id": "boards:zip_recruiter-us-coop",
+    "type": "jobspy",
+    "sites": [
+      "zip_recruiter"
+    ],
+    "label": "ZipRecruiter · US · engineering co-op",
+    "query": "engineering co-op",
+    "location": "United States",
+    "country": "USA",
+    "homepage": "https://www.ziprecruiter.com/Jobs/Mechanical-Engineering-Intern",
+    "limit": 40,
+    "interval": 21600,
+    "discover_boards": true
+  },
+  {
+    "id": "boards:linkedin-ca-coop",
+    "type": "jobspy",
+    "sites": [
+      "linkedin"
+    ],
+    "label": "LinkedIn · CA · engineering co-op",
+    "query": "engineering co-op",
+    "location": "Canada",
+    "country": "Canada",
+    "homepage": "https://www.linkedin.com/jobs/",
+    "limit": 40,
+    "interval": 21600,
+    "discover_boards": true
+  },
+  {
+    "id": "boards:linkedin-us-coop",
+    "type": "jobspy",
+    "sites": [
+      "linkedin"
+    ],
+    "label": "LinkedIn · US · engineering co-op",
+    "query": "engineering co-op",
+    "location": "United States",
+    "country": "USA",
+    "homepage": "https://www.linkedin.com/jobs/",
+    "limit": 40,
+    "interval": 21600,
+    "discover_boards": true
+  },
+  {
+    "id": "boards:google-ca-coop",
+    "type": "jobspy",
+    "sites": [
+      "google"
+    ],
+    "label": "Google Jobs · CA · engineering co-op",
+    "query": "engineering co-op",
+    "location": "Canada",
+    "country": "Canada",
+    "homepage": "https://www.google.com/search?q=engineering+internship+jobs",
+    "limit": 40,
+    "interval": 21600,
+    "discover_boards": true
+  },
+  {
+    "id": "boards:google-us-coop",
+    "type": "jobspy",
+    "sites": [
+      "google"
+    ],
+    "label": "Google Jobs · US · engineering co-op",
+    "query": "engineering co-op",
+    "location": "United States",
+    "country": "USA",
+    "homepage": "https://www.google.com/search?q=engineering+internship+jobs",
+    "limit": 40,
+    "interval": 21600,
+    "discover_boards": true
+  },
+  {
+    "id": "boards:indeed-ca-hardware",
+    "type": "jobspy",
+    "sites": [
+      "indeed"
+    ],
+    "label": "Indeed · CA · hardware engineering intern",
+    "query": "hardware engineering intern",
+    "location": "Canada",
+    "country": "Canada",
+    "homepage": "https://ca.indeed.com/jobs?q=mechanical+engineering+intern",
+    "limit": 40,
+    "interval": 21600,
+    "discover_boards": true
+  },
+  {
+    "id": "boards:indeed-us-hardware",
+    "type": "jobspy",
+    "sites": [
+      "indeed"
+    ],
+    "label": "Indeed · US · hardware engineering intern",
+    "query": "hardware engineering intern",
+    "location": "United States",
+    "country": "USA",
+    "homepage": "https://www.indeed.com/jobs?q=mechanical+engineering+intern",
+    "limit": 40,
+    "interval": 21600,
+    "discover_boards": true
+  },
+  {
+    "id": "boards:glassdoor-ca-hardware",
+    "type": "jobspy",
+    "sites": [
+      "glassdoor"
+    ],
+    "label": "Glassdoor · CA · hardware engineering intern",
+    "query": "hardware engineering intern",
+    "location": "Canada",
+    "country": "Canada",
+    "homepage": "https://www.glassdoor.ca/Job/index.htm",
+    "limit": 40,
+    "interval": 21600,
+    "discover_boards": true
+  },
+  {
+    "id": "boards:glassdoor-us-hardware",
+    "type": "jobspy",
+    "sites": [
+      "glassdoor"
+    ],
+    "label": "Glassdoor · US · hardware engineering intern",
+    "query": "hardware engineering intern",
+    "location": "United States",
+    "country": "USA",
+    "homepage": "https://www.glassdoor.com/Job/index.htm",
+    "limit": 40,
+    "interval": 21600,
+    "discover_boards": true
+  },
+  {
+    "id": "boards:zip_recruiter-us-hardware",
+    "type": "jobspy",
+    "sites": [
+      "zip_recruiter"
+    ],
+    "label": "ZipRecruiter · US · hardware engineering intern",
+    "query": "hardware engineering intern",
+    "location": "United States",
+    "country": "USA",
+    "homepage": "https://www.ziprecruiter.com/Jobs/Mechanical-Engineering-Intern",
+    "limit": 40,
+    "interval": 21600,
+    "discover_boards": true
+  },
+  {
+    "id": "boards:linkedin-ca-hardware",
+    "type": "jobspy",
+    "sites": [
+      "linkedin"
+    ],
+    "label": "LinkedIn · CA · hardware engineering intern",
+    "query": "hardware engineering intern",
+    "location": "Canada",
+    "country": "Canada",
+    "homepage": "https://www.linkedin.com/jobs/",
+    "limit": 40,
+    "interval": 21600,
+    "discover_boards": true
+  },
+  {
+    "id": "boards:linkedin-us-hardware",
+    "type": "jobspy",
+    "sites": [
+      "linkedin"
+    ],
+    "label": "LinkedIn · US · hardware engineering intern",
+    "query": "hardware engineering intern",
+    "location": "United States",
+    "country": "USA",
+    "homepage": "https://www.linkedin.com/jobs/",
+    "limit": 40,
+    "interval": 21600,
+    "discover_boards": true
+  },
+  {
+    "id": "boards:google-ca-hardware",
+    "type": "jobspy",
+    "sites": [
+      "google"
+    ],
+    "label": "Google Jobs · CA · hardware engineering intern",
+    "query": "hardware engineering intern",
+    "location": "Canada",
+    "country": "Canada",
+    "homepage": "https://www.google.com/search?q=engineering+internship+jobs",
+    "limit": 40,
+    "interval": 21600,
+    "discover_boards": true
+  },
+  {
+    "id": "boards:google-us-hardware",
+    "type": "jobspy",
+    "sites": [
+      "google"
+    ],
+    "label": "Google Jobs · US · hardware engineering intern",
+    "query": "hardware engineering intern",
+    "location": "United States",
+    "country": "USA",
+    "homepage": "https://www.google.com/search?q=engineering+internship+jobs",
+    "limit": 40,
+    "interval": 21600,
+    "discover_boards": true
+  },
+  {
+    "id": "boards:indeed-ca-robotics",
+    "type": "jobspy",
+    "sites": [
+      "indeed"
+    ],
+    "label": "Indeed · CA · robotics intern",
+    "query": "robotics intern",
+    "location": "Canada",
+    "country": "Canada",
+    "homepage": "https://ca.indeed.com/jobs?q=mechanical+engineering+intern",
+    "limit": 40,
+    "interval": 21600,
+    "discover_boards": true
+  },
+  {
+    "id": "boards:indeed-us-robotics",
+    "type": "jobspy",
+    "sites": [
+      "indeed"
+    ],
+    "label": "Indeed · US · robotics intern",
+    "query": "robotics intern",
+    "location": "United States",
+    "country": "USA",
+    "homepage": "https://www.indeed.com/jobs?q=mechanical+engineering+intern",
+    "limit": 40,
+    "interval": 21600,
+    "discover_boards": true
+  },
+  {
+    "id": "boards:glassdoor-ca-robotics",
+    "type": "jobspy",
+    "sites": [
+      "glassdoor"
+    ],
+    "label": "Glassdoor · CA · robotics intern",
+    "query": "robotics intern",
+    "location": "Canada",
+    "country": "Canada",
+    "homepage": "https://www.glassdoor.ca/Job/index.htm",
+    "limit": 40,
+    "interval": 21600,
+    "discover_boards": true
+  },
+  {
+    "id": "boards:glassdoor-us-robotics",
+    "type": "jobspy",
+    "sites": [
+      "glassdoor"
+    ],
+    "label": "Glassdoor · US · robotics intern",
+    "query": "robotics intern",
+    "location": "United States",
+    "country": "USA",
+    "homepage": "https://www.glassdoor.com/Job/index.htm",
+    "limit": 40,
+    "interval": 21600,
+    "discover_boards": true
+  },
+  {
+    "id": "boards:zip_recruiter-us-robotics",
+    "type": "jobspy",
+    "sites": [
+      "zip_recruiter"
+    ],
+    "label": "ZipRecruiter · US · robotics intern",
+    "query": "robotics intern",
+    "location": "United States",
+    "country": "USA",
+    "homepage": "https://www.ziprecruiter.com/Jobs/Mechanical-Engineering-Intern",
+    "limit": 40,
+    "interval": 21600,
+    "discover_boards": true
+  },
+  {
+    "id": "boards:linkedin-ca-robotics",
+    "type": "jobspy",
+    "sites": [
+      "linkedin"
+    ],
+    "label": "LinkedIn · CA · robotics intern",
+    "query": "robotics intern",
+    "location": "Canada",
+    "country": "Canada",
+    "homepage": "https://www.linkedin.com/jobs/",
+    "limit": 40,
+    "interval": 21600,
+    "discover_boards": true
+  },
+  {
+    "id": "boards:linkedin-us-robotics",
+    "type": "jobspy",
+    "sites": [
+      "linkedin"
+    ],
+    "label": "LinkedIn · US · robotics intern",
+    "query": "robotics intern",
+    "location": "United States",
+    "country": "USA",
+    "homepage": "https://www.linkedin.com/jobs/",
+    "limit": 40,
+    "interval": 21600,
+    "discover_boards": true
+  },
+  {
+    "id": "boards:google-ca-robotics",
+    "type": "jobspy",
+    "sites": [
+      "google"
+    ],
+    "label": "Google Jobs · CA · robotics intern",
+    "query": "robotics intern",
+    "location": "Canada",
+    "country": "Canada",
+    "homepage": "https://www.google.com/search?q=engineering+internship+jobs",
+    "limit": 40,
+    "interval": 21600,
+    "discover_boards": true
+  },
+  {
+    "id": "boards:google-us-robotics",
+    "type": "jobspy",
+    "sites": [
+      "google"
+    ],
+    "label": "Google Jobs · US · robotics intern",
+    "query": "robotics intern",
+    "location": "United States",
+    "country": "USA",
+    "homepage": "https://www.google.com/search?q=engineering+internship+jobs",
+    "limit": 40,
+    "interval": 21600,
+    "discover_boards": true
+  },
+  {
+    "id": "boards:indeed-ca-manufacturing",
+    "type": "jobspy",
+    "sites": [
+      "indeed"
+    ],
+    "label": "Indeed · CA · manufacturing engineering intern",
+    "query": "manufacturing engineering intern",
+    "location": "Canada",
+    "country": "Canada",
+    "homepage": "https://ca.indeed.com/jobs?q=mechanical+engineering+intern",
+    "limit": 40,
+    "interval": 21600,
+    "discover_boards": true
+  },
+  {
+    "id": "boards:indeed-us-manufacturing",
+    "type": "jobspy",
+    "sites": [
+      "indeed"
+    ],
+    "label": "Indeed · US · manufacturing engineering intern",
+    "query": "manufacturing engineering intern",
+    "location": "United States",
+    "country": "USA",
+    "homepage": "https://www.indeed.com/jobs?q=mechanical+engineering+intern",
+    "limit": 40,
+    "interval": 21600,
+    "discover_boards": true
+  },
+  {
+    "id": "boards:glassdoor-ca-manufacturing",
+    "type": "jobspy",
+    "sites": [
+      "glassdoor"
+    ],
+    "label": "Glassdoor · CA · manufacturing engineering intern",
+    "query": "manufacturing engineering intern",
+    "location": "Canada",
+    "country": "Canada",
+    "homepage": "https://www.glassdoor.ca/Job/index.htm",
+    "limit": 40,
+    "interval": 21600,
+    "discover_boards": true
+  },
+  {
+    "id": "boards:glassdoor-us-manufacturing",
+    "type": "jobspy",
+    "sites": [
+      "glassdoor"
+    ],
+    "label": "Glassdoor · US · manufacturing engineering intern",
+    "query": "manufacturing engineering intern",
+    "location": "United States",
+    "country": "USA",
+    "homepage": "https://www.glassdoor.com/Job/index.htm",
+    "limit": 40,
+    "interval": 21600,
+    "discover_boards": true
+  },
+  {
+    "id": "boards:zip_recruiter-us-manufacturing",
+    "type": "jobspy",
+    "sites": [
+      "zip_recruiter"
+    ],
+    "label": "ZipRecruiter · US · manufacturing engineering intern",
+    "query": "manufacturing engineering intern",
+    "location": "United States",
+    "country": "USA",
+    "homepage": "https://www.ziprecruiter.com/Jobs/Mechanical-Engineering-Intern",
+    "limit": 40,
+    "interval": 21600,
+    "discover_boards": true
+  },
+  {
+    "id": "boards:linkedin-ca-manufacturing",
+    "type": "jobspy",
+    "sites": [
+      "linkedin"
+    ],
+    "label": "LinkedIn · CA · manufacturing engineering intern",
+    "query": "manufacturing engineering intern",
+    "location": "Canada",
+    "country": "Canada",
+    "homepage": "https://www.linkedin.com/jobs/",
+    "limit": 40,
+    "interval": 21600,
+    "discover_boards": true
+  },
+  {
+    "id": "boards:linkedin-us-manufacturing",
+    "type": "jobspy",
+    "sites": [
+      "linkedin"
+    ],
+    "label": "LinkedIn · US · manufacturing engineering intern",
+    "query": "manufacturing engineering intern",
+    "location": "United States",
+    "country": "USA",
+    "homepage": "https://www.linkedin.com/jobs/",
+    "limit": 40,
+    "interval": 21600,
+    "discover_boards": true
+  },
+  {
+    "id": "boards:google-ca-manufacturing",
+    "type": "jobspy",
+    "sites": [
+      "google"
+    ],
+    "label": "Google Jobs · CA · manufacturing engineering intern",
+    "query": "manufacturing engineering intern",
+    "location": "Canada",
+    "country": "Canada",
+    "homepage": "https://www.google.com/search?q=engineering+internship+jobs",
+    "limit": 40,
+    "interval": 21600,
+    "discover_boards": true
+  },
+  {
+    "id": "boards:google-us-manufacturing",
+    "type": "jobspy",
+    "sites": [
+      "google"
+    ],
+    "label": "Google Jobs · US · manufacturing engineering intern",
+    "query": "manufacturing engineering intern",
+    "location": "United States",
+    "country": "USA",
+    "homepage": "https://www.google.com/search?q=engineering+internship+jobs",
+    "limit": 40,
+    "interval": 21600,
+    "discover_boards": true
+  },
+  {
+    "id": "boards:speedy-ai-us",
+    "type": "speedy",
+    "region": "us",
+    "label": "SpeedyApply AI internships · US",
+    "homepage": "https://github.com/speedyapply/2027-AI-College-Jobs",
+    "url": "https://raw.githubusercontent.com/speedyapply/2027-AI-College-Jobs/main/README.md",
+    "interval": 21600,
+    "discover_boards": true
+  },
+  {
+    "id": "boards:speedy-ai-ca",
+    "type": "speedy",
+    "region": "ca",
+    "label": "SpeedyApply AI internships · CA",
+    "homepage": "https://github.com/speedyapply/2027-AI-College-Jobs",
+    "url": "https://raw.githubusercontent.com/speedyapply/2027-AI-College-Jobs/main/INTERN_INTL.md",
+    "interval": 21600,
+    "discover_boards": true
+  },
+  {
+    "id": "boards:speedy-swe-us",
+    "type": "speedy",
+    "region": "us",
+    "label": "SpeedyApply SWE internships · US",
+    "homepage": "https://github.com/speedyapply/2027-SWE-College-Jobs",
+    "url": "https://raw.githubusercontent.com/speedyapply/2027-SWE-College-Jobs/main/README.md",
+    "interval": 21600,
+    "discover_boards": true
+  },
+  {
+    "id": "boards:speedy-swe-ca",
+    "type": "speedy",
+    "region": "ca",
+    "label": "SpeedyApply SWE internships · CA",
+    "homepage": "https://github.com/speedyapply/2027-SWE-College-Jobs",
+    "url": "https://raw.githubusercontent.com/speedyapply/2027-SWE-College-Jobs/main/INTERN_INTL.md",
+    "interval": 21600,
+    "discover_boards": true
+  }
+]
