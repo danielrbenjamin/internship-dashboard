@@ -1,7 +1,7 @@
 import {useEffect, useState} from "react";
 import {ChevronLeft, ChevronRight} from "lucide-react";
 import {api} from "./api";
-import {CatalogMetrics, DiscoveryPanels, useOverviewStats, type OverviewStats} from "./Overview";
+import {CatalogMetrics, DiscoveryPanels, useOverviewStats} from "./Overview";
 import {PageHeader} from "./PageHeader";
 
 type Measure = "applied" | "interview" | "offer" | "assessment" | "closed" | "active" |
@@ -97,10 +97,9 @@ function Breakdown({title, rows}: {title: string; rows: [string, number][]}) {
   </section>;
 }
 
-export function Analytics({sourceName, openSource, sample}: {
+export function Analytics({sourceName, openSource}: {
   sourceName: (id: string) => string;
   openSource: (id: string) => void;
-  sample?: {overview: OverviewStats; report: (end: string, days: number) => AnalyticsReport};
 }) {
   const today = dateKey(new Date());
   const [days, setDays] = useState(7);
@@ -109,14 +108,12 @@ export function Analytics({sourceName, openSource, sample}: {
   const [measure, setMeasure] = useState<Measure>("applied");
   const [family, setFamily] = useState("");
   const [usageMeasure, setUsageMeasure] = useState<Measure>("requests");
-  const [liveReport, setReport] = useState<AnalyticsReport>();
+  const [report, setReport] = useState<AnalyticsReport>();
   const [error, setError] = useState("");
   const [retry, setRetry] = useState(0);
-  const overview = useOverviewStats(true, sample?.overview);
+  const overview = useOverviewStats(true);
   const end = through || today;
-  const report = sample ? sample.report(end, days) : liveReport;
   useEffect(() => {
-    if (sample) return;
     const controller = new AbortController();
     const query = new URLSearchParams({days: String(days), end, zone: Intl.DateTimeFormat().resolvedOptions().timeZone,
       offset_minutes: String(-new Date().getTimezoneOffset())});
@@ -132,7 +129,7 @@ export function Analytics({sourceName, openSource, sample}: {
     void load();
     const timer = window.setInterval(load, 60000);
     return () => {controller.abort(); window.clearInterval(timer);};
-  }, [days, end, retry, sample]);
+  }, [days, end, retry]);
   const app = report?.applications;
   const codex = report?.codex;
   const submitted = app?.current.applied || 0;

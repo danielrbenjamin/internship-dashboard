@@ -4,7 +4,7 @@ import {PageHeader} from "./PageHeader";
 import {lazy, Suspense, useEffect, useState} from "react";
 import {MailSettings} from "./MailSettings";
 import {PostingText} from "./PostingText";
-import {api, formatDate, statuses} from "./api";
+import {api, assetHref, formatDate, statuses} from "./api";
 import type {Application, Details, Document, Job, Profile, Search} from "./api";
 
 const ProjectEditor=lazy(()=>import("./ProjectEditor"));
@@ -62,8 +62,8 @@ export function Workspace({job, application, reload, codexReady, connectCodex}: 
   function documentLinks(version: Document) {
     const path = base + "/documents/" + version.id;
     return <div className="actions">
-      {version.compiled === 1 && <a className="button" href={path + "/pdf"} target="_blank" rel="noreferrer">Open PDF</a>}
-      <a className="button" href={path + "/zip"}>Source ZIP</a>
+      {version.compiled === 1 && <a className="button" href={assetHref(path + "/pdf")} target="_blank" rel="noreferrer">Open PDF</a>}
+      <a className="button" href={assetHref(path + "/zip")} download>Source ZIP</a>
     </div>;
   }
 
@@ -130,8 +130,8 @@ export function Workspace({job, application, reload, codexReady, connectCodex}: 
           <button disabled={!codexReady || busy || pending || !details?.posting.description} onClick={() => action(
             () => api(route + "/ai?cover_letter=true", "POST"), "Cover letter request queued.")}>Draft with Codex</button>
           {!!selectedLetter && <>
-            <a className="button" href={`${route}/cover-letters/${selectedLetter.id}/txt`}>Download text</a>
-            <a className="button" href={`${route}/cover-letters/${selectedLetter.id}/pdf`}>Download PDF</a>
+            <a className="button" href={assetHref(`${route}/cover-letters/${selectedLetter.id}/txt`)} download>Download text</a>
+            <a className="button" href={assetHref(`${route}/cover-letters/${selectedLetter.id}/pdf`)} download>Download PDF</a>
           </>}
         </div>
         {!!details?.cover_letters.length && <label>Saved version

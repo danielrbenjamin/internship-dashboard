@@ -1,6 +1,6 @@
 import {useEffect, useRef, useState} from "react";
 import type {SavedContact} from "./Referrals";
-import {api, ApiError, type Application} from "./api";
+import {api, type Application} from "./api";
 
 type Person = {name: string; url: string; headline: string; snippet: string; team_match: boolean; ubc: boolean};
 type Results = {people: Person[]; partial: boolean};
@@ -23,7 +23,7 @@ export function FindPeople({apps, initialCompany, initialTeam, contacts, reload}
   const [saved, setSaved] = useState<string[]>([]);
   const [message, setMessage] = useState("");
   const [searchUnavailable, setSearchUnavailable] = useState(false);
-  const [searched, setSearched] = useState("");
+  const [searched, setSearched] = useState({employer: "", team: ""});
   const request = useRef(false);
   const companies = [...new Set(apps.map(a => a.company))].sort();
 
@@ -34,18 +34,14 @@ export function FindPeople({apps, initialCompany, initialTeam, contacts, reload}
     setResults(undefined);
     setMessage("");
     setSearchUnavailable(false);
-    setSearched(employer);
+    setSearched({employer, team: role});
     try {
       const query = new URLSearchParams({company: employer, team: role});
       const response = await api<Results>("/api/owner/referrals/people?" + query);
       setResults({...response, company: employer});
     } catch (error) {
-      if (error instanceof ApiError && error.status === 503) {
-        setSearchUnavailable(true);
-        setMessage("In-page LinkedIn search needs a Brave Search API key.");
-      } else {
-        setMessage((error as Error).message);
-      }
+      setSearchUnavailable(true);
+      setMessage((error as Error).message);
     } finally {
       setLoading(false);
       request.current = false;
@@ -72,7 +68,7 @@ export function FindPeople({apps, initialCompany, initialTeam, contacts, reload}
   }
 
   const savedMatches = contacts.filter(contact =>
-    contact.company.toLowerCase() === (searched || company.trim()).toLowerCase() &&
+    contact.company.toLowerCase() === (searched.employer || company.trim()).toLowerCase() &&
     contact.stage !== "Avoid" &&
     !results?.people.some(person => person.url === contact.linkedin?.split(/[?#]/)[0].replace(/\/$/, "")));
   return <section>
@@ -87,7 +83,8 @@ export function FindPeople({apps, initialCompany, initialTeam, contacts, reload}
       <button className="primary" disabled={loading || !company.trim()}>{loading ? "Searching…" : "Find people"}</button>
     </form>
     {message && <p role="status">{message}</p>}
-    {searchUnavailable && <a className="button" href={linkedInPeople(searched, team)} target="_blank" rel="noreferrer">Search LinkedIn directly</a>}
+    {(searchUnavailable || results?.people.length === 0) && <a className="button"
+      href={linkedInPeople(searched.employer, searched.team)} target="_blank" rel="noreferrer">Search LinkedIn directly</a>}
     {!!savedMatches.length && <section className="referral-people" aria-label="Saved contacts">
       {savedMatches.map(contact => <article key={contact.id} className="contact-row">
         <div><strong>{contact.name}</strong><p>{contact.company} · Saved</p></div>

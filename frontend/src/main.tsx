@@ -7,12 +7,11 @@ import type {Alert, Application, CatalogSource, Job, Profile} from "./api";
 import {PostingText} from "./PostingText";
 import {Overview} from "./Overview";
 import {Analytics} from "./Analytics";
-import {Demo} from "./Demo";
 import {Interviews} from "./Interviews";
 
 import {Navigation} from "./Navigation";
 import type {View} from "./Navigation";
-import {publicViews, readRoute, routeUrl, type Route} from "./Routes";
+import {demoMode, publicViews, readRoute, routeUrl, type Route} from "./Routes";
 import {Referrals} from "./Referrals";
 import {useCodexStatus} from "./CodexConnection";
 import {useDeadlineNotifications} from "./DeadlineNotifications";
@@ -52,7 +51,9 @@ function postingAge(postedOn: string) {
 
 function App() {
   const [sidebarCollapsed, setSidebarCollapsed] = useState(() => localStorage.getItem("tern.sidebar-collapsed") === "true");
-  useEffect(() => {localStorage.setItem("tern.sidebar-collapsed", String(sidebarCollapsed));}, [sidebarCollapsed]);
+  useEffect(() => {
+    if (!demoMode) localStorage.setItem("tern.sidebar-collapsed", String(sidebarCollapsed));
+  }, [sidebarCollapsed]);
   const [session, setSession] = useState<{owner: boolean; login_available: boolean;account?:{name?:string;email?:string;picture?:string}}>();
   const [route, setRoute] = useState(readRoute);
   const {view, job: selected = "", tab: settingsTab = "Profile", company: referralCompany = "",
@@ -68,6 +69,7 @@ function App() {
   const [query, setQuery] = useState("");
   const [location, setLocation] = useState("");
   const [discipline, setDiscipline] = useState("");
+  const [postedWithin, setPostedWithin] = useState("30");
   const [disciplines, setDisciplines] = useState<string[]>([]);
   const [rule, setRule] = useState("");
   const [term, setTerm] = useState("");
@@ -87,10 +89,9 @@ function App() {
   const searchInput = useRef<HTMLInputElement>(null);
 
   const owner = session?.owner;
-  const demo = view === "Demo";
-  const codexStatus = useCodexStatus(Boolean(owner) && !demo);
+  const codexStatus = useCodexStatus(Boolean(owner));
   const codexReady = codexStatus === "connected";
-  const deadlineNotifications=useDeadlineNotifications(reminders,Boolean(owner) && !demo);
+  const deadlineNotifications=useDeadlineNotifications(reminders,Boolean(owner), !demoMode);
   const refresh = useCallback(async () => {
     try {
       const [apps, options, notifications, due] = await Promise.all([
@@ -126,14 +127,13 @@ function App() {
     return () => controller.abort();
   }, []);
   useEffect(() => {
-    if (demo) return;
     const controller = new AbortController();
     const update = () => void api<CatalogSource[]>("/api/sources", "GET", undefined, controller.signal)
       .then(setCoverage).catch(() => {});
     update();
     const timer = window.setInterval(update, 60000);
     return () => {controller.abort(); window.clearInterval(timer);};
-  }, [demo]);
+  }, []);
   useEffect(() => {
     const handle = (event: KeyboardEvent) => {
       const target = event.target as HTMLElement | null;
@@ -151,11 +151,11 @@ function App() {
     return () => window.removeEventListener("keydown", handle);
   }, [selected, view, catalogFocus, mode]);
   useEffect(() => {
-    if (!owner || demo) return;
+    if (!owner) return;
     void refresh().catch(showError);
     const timer = window.setInterval(() => void refresh().catch(showError), 30000);
     return () => window.clearInterval(timer);
-  }, [owner, refresh, demo]);
+  }, [owner, refresh]);
   useEffect(() => {
     if (view !== "Browse") return;
     const controller = new AbortController();
@@ -169,7 +169,7 @@ function App() {
       setLoading(true); setRetry(false);
       try {
         const params = new URLSearchParams({q: query, location, offset: String(append ? offset : 0),
-          term, discipline, source: sourceFilter, map_view: String(mode === "Map")});
+          term, discipline, source: sourceFilter, map_view: String(mode === "Map"), posted_within: postedWithin});
         if (rule === "watchlist") params.set("watchlist", "true");
         else if (rule) params.set("saved_search", rule);
         const data = await api<{jobs: Job[]; has_more: boolean; disciplines?: string[]; total?: number}>("/api/jobs?" + params, "GET", undefined, controller.signal);
@@ -197,7 +197,7 @@ function App() {
       if (mode === "Map" || offset <= 100) void load();
     }, 60000);
     return () => {controller.abort(); window.clearTimeout(timer); window.clearInterval(refreshTimer);};
-  }, [query, location, rule, term, discipline, sourceFilter, mode, view, profile?.searches.length]);
+  }, [query, location, rule, term, discipline, sourceFilter, mode, view, postedWithin, profile?.searches.length]);
   useEffect(() => {
     if (!sentinel.current || !more || loading || retry || view !== "Browse" || mode !== "List") return;
     const observer = new IntersectionObserver(entries => {
@@ -280,7 +280,8 @@ function App() {
     }
   }
 
-  const hasFilters = Boolean(query || location || statusFilter || (view === "Browse" && (term || discipline || sourceFilter || rule)));
+  const hasFilters = Boolean(query || location || statusFilter || (view === "Browse" &&
+    (term || discipline || sourceFilter || rule || postedWithin !== "30")));
   return <>
     <BrandIntro />
     <div className={["layout", sidebarCollapsed && "sidebar-collapsed", expandedPane && "catalog-expanded"].filter(Boolean).join(" ")}>
@@ -295,7 +296,7 @@ function App() {
           <p>Set the Auth0 web application details and your owner subject in the local environment, then restart the app.</p>
           <p>Local callback <code>{window.location.origin}/auth/callback</code></p>
         </section>}
-        {owner && !demo && !!reminders.length && view!=="Replies" && <p className="notice"><button onClick={()=>navigate("Replies")}>{reminders.length} due or overdue · {reminders[0].subject}</button></p>}
+        {owner && !!reminders.length && view!=="Replies" && <p className="notice"><button onClick={()=>navigate("Replies")}>{reminders.length} due or overdue · {reminders[0].subject}</button></p>}
         {!!message && <p className="notice" role="alert">{message} <button onClick={() => setMessage("")}>Dismiss</button></p>}
         {protectedPage && !owner ? <section className="desk-page">
           {session ? <>
@@ -303,7 +304,6 @@ function App() {
             {session.login_available ? <a className="button primary" href={signInUrl}>Sign in with Google</a> :
               <p>Owner sign-in is unavailable.</p>}</> : <p role="status">Checking sign-in…</p>}
         </section> : view === "Needs" ? <NeedsYou open={openPriority}/> :
-        view === "Demo" ? <Demo exit={() => navigate("Overview")}/> :
         view === "Analytics" ? <Analytics sourceName={sourceLabel} openSource={openSource}/> :
         view === "Interviews" ? <Interviews open={id=>navigate("Materials",{job:id})} openEmail={reply=>navigate("Replies",{reply})}/> :
         view === "Background" ? <Background open={id=>navigate("Materials",{job:id})}/> : view === "Referrals" ? <Referrals apps={applications} initialCompany={referralCompany} initialTeam={referralTeam}/> : view === "Screening" ? <Screening codexReady={codexReady} connectCodex={openCodexSettings} materials={id=>navigate("Materials",{job:id})} settings={()=>navigate("Settings",{tab:"Discovery"})} open={id=>navigate("Browse",{job:id})}/> :
@@ -339,6 +339,11 @@ function App() {
                 onChange={e => {setQuery(e.target.value);}} /></label>
             <button aria-expanded={filtersOpen} aria-controls="catalog-filters" onClick={() => setFiltersOpen(!filtersOpen)}>
               <SlidersHorizontal size={16} aria-hidden="true" />Filters</button>
+            {view === "Browse" && <label className="posted-filter">Posted
+              <select aria-label="Posted" value={postedWithin} onChange={e => {setPostedWithin(e.target.value); closeDetails();}}>
+                <option value="1">Today</option>
+                {[3, 7, 14, 30].map(days => <option key={days} value={days}>Last {days} days</option>)}
+              </select></label>}
             <div className="segmented" role="group" aria-label="Catalog layout">
               {(["List", "Map"] as const).map(value => {
                 const Icon = value === "List" ? List : MapIcon;
@@ -347,7 +352,7 @@ function App() {
               })}
             </div>
             {hasFilters && <button className="clear-filters" onClick={() => {
-              setQuery(""); setLocation(""); setTerm(""); setDiscipline(""); setSourceFilter(""); setRule(""); setStatusFilter("");
+              setQuery(""); setLocation(""); setTerm(""); setDiscipline(""); setSourceFilter(""); setRule(""); setStatusFilter(""); setPostedWithin("30");
             }}>Clear filters</button>}
           </div>
           {view !== "Browse" && <div className="pipeline" aria-label="Filter by application status">
@@ -516,4 +521,9 @@ function PostingDiff({job}: {job: Job}) {
     <ins>{current.slice(prefix, current.length - suffix)}</ins></div>;
 }
 
+if (demoMode) {
+  window.addEventListener("pageshow", event => {
+    if (event.persisted) window.location.reload();
+  });
+}
 createRoot(document.getElementById("root")!).render(<ThemeProvider><App /></ThemeProvider>);

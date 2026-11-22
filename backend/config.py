@@ -21,7 +21,7 @@ class Settings(BaseSettings):
     cover_letter_branch: str = "main"
     cover_letter_entry: str = "cover-letter.tex"
     github_token: str = ""
-    brave_search_api_key: str = ""
+    exa_api_key: str = ""
     mail_host: str = ""
     mail_user: str = ""
     mail_password: str = ""

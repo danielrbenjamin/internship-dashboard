@@ -541,12 +541,8 @@ nav .nav-group h2 { letter-spacing: .025em; }
 .interview-invitations li { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between;
   gap: .5rem; padding-block: .55rem; border-bottom: 1px solid var(--line); }
 .interview-invitations small { display: block; }
-.demo-toolbar { display: flex; flex-wrap: wrap; align-items: center; gap: .5rem .75rem; margin-bottom: 1rem;
-  padding: .55rem .65rem; background: var(--surface); border: 1px solid var(--line); border-radius: var(--radius); }
-.demo-toolbar > span { display: flex; align-items: baseline; gap: .45rem; }
-.demo-toolbar small { color: var(--muted); }
-.demo-toolbar > button { margin-left: auto; }
-.demo-openings [aria-pressed="true"] { background: var(--selected); }
+.posted-filter { display: flex; align-items: center; gap: .4rem; margin: 0; white-space: nowrap; }
+.posted-filter select { width: auto; }
 @media (max-width: 920px) { .report-page .analytics-grid { grid-template-columns: minmax(0, 1fr); } }
 .settings > form, .settings > .desk-card { margin-top: 1rem; }
 .settings fieldset { border: 1px solid var(--line); border-radius: var(--radius); margin: .8rem 0; padding: .9rem 1rem; }

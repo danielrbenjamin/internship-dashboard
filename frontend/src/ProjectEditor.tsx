@@ -7,7 +7,8 @@ import * as monaco from "monaco-editor/esm/vs/editor/editor.api";
 import "monaco-editor/esm/vs/editor/editor.all";
 import Worker from "monaco-editor/esm/vs/editor/editor.worker?worker";
 import {useTheme} from "./Theme";
-import {api,type Task,type Document} from "./api";
+import {api, assetHref, type Task,type Document} from "./api";
+import {demoMode} from "./Routes";
 
 self.MonacoEnvironment={getWorker:()=>new Worker()};
 monaco.languages.register({id:"latex"});
@@ -51,6 +52,18 @@ function Code({text,proposed,onChange}:{text:string;proposed?:string;onChange:(v
 
 const defaultLayout = {files: true, pdf: true, filesWidth: 180, pdfWidth: 440};
 const editorLayoutKey = "tern.editor-layout";
+const demoDrafts = new Map<string, string>();
+const draftStorage = {
+  getItem: (key: string) => demoMode ? demoDrafts.get(key) ?? null : sessionStorage.getItem(key),
+  setItem: (key: string, value: string) => {
+    if (demoMode) demoDrafts.set(key, value);
+    else sessionStorage.setItem(key, value);
+  },
+  removeItem: (key: string) => {
+    if (demoMode) demoDrafts.delete(key);
+    else sessionStorage.removeItem(key);
+  },
+};
 
 function readLayout(): typeof defaultLayout {
   try {return {...defaultLayout, ...JSON.parse(localStorage.getItem(editorLayoutKey) ?? "{}")};}
@@ -73,7 +86,9 @@ export default function ProjectEditor({doc,tasks,onVersion,suggest,codexReady=fa
     return () => observer.disconnect();
   }, []);
   useEffect(() => {
-    try {localStorage.setItem(editorLayoutKey, JSON.stringify(layout));} catch {}
+    if (!demoMode) {
+      try {localStorage.setItem(editorLayoutKey, JSON.stringify(layout));} catch {}
+    }
   }, [layout]);
 
   function setFocusMode(next: boolean) {
@@ -106,16 +121,16 @@ export default function ProjectEditor({doc,tasks,onVersion,suggest,codexReady=fa
   const pdfWidth = Math.min(layout.pdfWidth, maxPdf);
   const paneStyle = {"--files-width": filesWidth + "px", "--pdf-width": pdfWidth + "px"} as CSSProperties;
   const storageKey="desk.project."+doc.id;
-  const [draft,setDraft]=useState<Record<string,string>>(()=>{try{return JSON.parse(sessionStorage.getItem(storageKey)||"{}")}catch{return {}}});
-  const [created,setCreated]=useState<string[]>(()=>{try{return JSON.parse(sessionStorage.getItem(storageKey+".new")||"[]")}catch{return []}});
+  const [draft,setDraft]=useState<Record<string,string>>(()=>{try{return JSON.parse(draftStorage.getItem(storageKey)||"{}")}catch{return {}}});
+  const [created,setCreated]=useState<string[]>(()=>{try{return JSON.parse(draftStorage.getItem(storageKey+".new")||"[]")}catch{return []}});
   const [adding,setAdding]=useState(false);
-  const [name,setName]=useState(sessionStorage.getItem(storageKey+".file")||doc.entry||"");
+  const [name,setName]=useState(draftStorage.getItem(storageKey+".file")||doc.entry||"");
   const [source,setSource]=useState<Source>();
   const [tree,setTree]=useState<Entry[]>([]);
   const [compare,setCompare]=useState(false);
   const [previousSource,setPreviousSource]=useState<Source>();
   const [review,setReview]=useState<Proposal>();
-  const [ignored,setIgnored]=useState<string[]>(()=>{try{return JSON.parse(sessionStorage.getItem(storageKey+".skipped")||"[]")}catch{return []}});
+  const [ignored,setIgnored]=useState<string[]>(()=>{try{return JSON.parse(draftStorage.getItem(storageKey+".skipped")||"[]")}catch{return []}});
   const [busy,setBusy]=useState(false),[message,setMessage]=useState("");
   const [latestChecks,setChecks]=useState<Checks|null>();
   const checks=latestChecks??source?.checks;
@@ -133,7 +148,7 @@ export default function ProjectEditor({doc,tasks,onVersion,suggest,codexReady=fa
     api<Source>(path+"/source?name="+encodeURIComponent(name),"GET",undefined,controller.signal).then(s=>{if(!controller.signal.aborted){setSource(s);setTree(s.tree)}}).catch(e=>{if(!controller.signal.aborted)setMessage(e.message)});
     return ()=>controller.abort();
   },[name,path,created]);
-  useEffect(()=>{try{sessionStorage.setItem(storageKey,JSON.stringify(draft));sessionStorage.setItem(storageKey+".new",JSON.stringify(created))}catch{setMessage("Browser draft storage is full. Save a version before leaving.");}},[storageKey,draft,created]);
+  useEffect(()=>{try{draftStorage.setItem(storageKey,JSON.stringify(draft));draftStorage.setItem(storageKey+".new",JSON.stringify(created))}catch{setMessage("Browser draft storage is full. Save a version before leaving.");}},[storageKey,draft,created]);
   const dirty=Object.keys(draft).length>0;
   const showingPreparedDiff = previousSource?.name === name;
   async function comparePrepared() {
@@ -152,21 +167,21 @@ export default function ProjectEditor({doc,tasks,onVersion,suggest,codexReady=fa
     }
   }
   function change(v:string){setDraft(prev=>{const d={...prev};if(v===source?.content && !created.includes(name))delete d[name];else d[name]=v;return d;});}
-  function dismiss(p:Proposal){const next=[...ignored,p.key];setIgnored(next);sessionStorage.setItem(storageKey+".skipped",JSON.stringify(next));setReview(undefined);}
+  function dismiss(p:Proposal){const next=[...ignored,p.key];setIgnored(next);draftStorage.setItem(storageKey+".skipped",JSON.stringify(next));setReview(undefined);}
   async function save(compile:boolean){
     setBusy(true);setMessage("");
     let id=doc.id;
     try{
       if(dirty){id=(await api<{id:string}>(path+"/save","POST",{files:draft,created})).id;}
       try{if(compile){const result=await api<{checks:Checks|null}>("/api/owner/documents/"+id+"/compile","POST");setChecks(result.checks);setCompiled(true);}}
-      finally{if(id!==doc.id){sessionStorage.setItem("desk.project."+id+".file",name);sessionStorage.setItem("desk.project."+id+".skipped",JSON.stringify(ignored));if(expanded)sessionStorage.setItem("desk.project."+id+".expanded","1");await onVersion(id);sessionStorage.removeItem(storageKey);sessionStorage.removeItem(storageKey+".new");}}
+      finally{if(id!==doc.id){draftStorage.setItem("desk.project."+id+".file",name);draftStorage.setItem("desk.project."+id+".skipped",JSON.stringify(ignored));if(expanded)draftStorage.setItem("desk.project."+id+".expanded","1");await onVersion(id);draftStorage.removeItem(storageKey);draftStorage.removeItem(storageKey+".new");}}
       setMessage(compile?"PDF compiled.":"Version saved.");
     }catch(e){setMessage(String(e));if(id!==doc.id&&compile)window.alert("Source saved. PDF compilation failed: "+String(e));}finally{setBusy(false);}
   }
   useLayoutEffect(() => {
-    const resumeFocus = sessionStorage.getItem(storageKey + ".expanded");
+    const resumeFocus = draftStorage.getItem(storageKey + ".expanded");
     if (resumeFocus) {
-      sessionStorage.removeItem(storageKey + ".expanded");
+      draftStorage.removeItem(storageKey + ".expanded");
       setFocusMode(true);
     }
   }, [storageKey]);
@@ -210,6 +225,6 @@ export default function ProjectEditor({doc,tasks,onVersion,suggest,codexReady=fa
     {layout.pdf && <><PaneDivider label="Resize PDF preview" min={minPdf} max={maxPdf} value={pdfWidth} direction={-1}
       onResize={width => setLayout(previous => ({...previous, pdfWidth: width}))} />
     <aside className="preview-pane"><div className="pane-title">PDF preview {dirty&&"· last compiled version"}</div>
-    {checks&&<p role="status">{checks.pages!=null&&` ${checks.pages} ${checks.pages===1?"page":"pages"}. `}{checks.overfull>0&&` ${checks.overfull} layout overflow warning${checks.overfull===1?"":"s"}.`}{!!checks.pages&&checks.pages>1&&doc.kind!=="cover"&&" Review the résumé length before submitting."}</p>}{compiled?<iframe title="Compiled document" src={path+"/pdf"}/>:<p>Recompile to preview this version.</p>}</aside></>}</div>
+    {checks&&<p role="status">{checks.pages!=null&&` ${checks.pages} ${checks.pages===1?"page":"pages"}. `}{checks.overfull>0&&` ${checks.overfull} layout overflow warning${checks.overfull===1?"":"s"}.`}{!!checks.pages&&checks.pages>1&&doc.kind!=="cover"&&" Review the résumé length before submitting."}</p>}{compiled?<iframe title="Compiled document" src={assetHref(path+"/pdf")}/>:<p>Recompile to preview this version.</p>}</aside></>}</div>
     {message&&<p className="studio-message" role="status">{message}</p>}</section>;
 }

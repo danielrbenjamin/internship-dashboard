@@ -1,9 +1,9 @@
 import {Bell, BookOpen, Building2, CalendarDays, ChartNoAxesCombined, ChevronDown, Files, House, Inbox, ListFilter, LogOut, Play, Send, Settings, Star, Users, Search, Moon, Sun, PanelLeftClose} from "lucide-react";
 import {useEffect, useRef, useState} from "react";
 import {useTheme} from "./Theme";
-import {publicViews} from "./Routes";
+import {demoMode, publicViews} from "./Routes";
 import {BrandMark} from "./Brand";
-export type View = "Background" | "Needs" | "Screening" | "Replies" | "Referrals" | "Materials" | "Overview" | "Browse" | "Saved" | "Applied" | "Alerts" | "Sources" | "Settings" | "Analytics" | "Interviews" | "Demo";
+export type View = "Background" | "Needs" | "Screening" | "Replies" | "Referrals" | "Materials" | "Overview" | "Browse" | "Saved" | "Applied" | "Alerts" | "Sources" | "Settings" | "Analytics" | "Interviews";
 const sections=[
   {name:"Workspace",links:[["Overview","Overview",House],["Needs","Needs you",Inbox],["Analytics","Analytics",ChartNoAxesCombined],["Background","Background work",ListFilter],["Alerts","Alerts",Bell]]},
   {name:"Jobs",links:[["Browse","All openings",BookOpen],["Screening","Where to apply",ListFilter],["Saved","Saved roles",Star],["Materials","Application materials",Files],["Applied","Applied",Send],["Interviews","Interviews",CalendarDays]]},
@@ -99,7 +99,7 @@ export function Navigation({view,navigate,owner,account,loginAvailable,signInHel
           aria-expanded={accountOpen} aria-label={name} title={name}>
           {account?.picture ? <img className="avatar" referrerPolicy="no-referrer" src={account.picture} alt="" /> :
             <span className="avatar">{name.slice(0,1).toUpperCase()}</span>}
-          <span className="account-name">{name}</span><ChevronDown size={14} aria-hidden="true" />
+          <span className="account-name">{name}{demoMode && " · Demo"}</span><ChevronDown size={14} aria-hidden="true" />
         </button>
         <div id="account-menu" className="account-menu" popover="auto" ref={accountMenu}
           onBeforeToggle={event => {
@@ -113,12 +113,10 @@ export function Navigation({view,navigate,owner,account,loginAvailable,signInHel
             menu.style.top = bounds.top > 150 ? "auto" : bounds.bottom + 6 + "px";
           }} onToggle={event => setAccountOpen(event.newState === "open")}>
           {account?.email && <small>{account.email}</small>}
-          <button onClick={() => {accountMenu.current?.hidePopover(); onSignOut();}}><LogOut size={15}/>Sign out</button>
+          <button onClick={() => {accountMenu.current?.hidePopover(); onSignOut();}}><LogOut size={15}/>{demoMode ? "Exit demo" : "Sign out"}</button>
         </div>
       </> : <>
-        <a className="button demo-link" href="/demo" aria-label="Demo mode" title="Demo mode" aria-current={view === "Demo" ? "page" : undefined}
-          onClick={event => {if (event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) return;
-            event.preventDefault(); navigate("Demo");}}><Play size={15} /><span>Demo mode</span></a>
+        <a className="button demo-link" href="/demo" aria-label="Demo mode" title="Demo mode"><Play size={15} /><span>Demo mode</span></a>
         {loginAvailable ? <a className="button" aria-label="Sign in with Google" title="Sign in with Google" href={signInUrl}><span className="google-mark">G</span><span>Sign in with Google</span></a> :
           <button aria-expanded={signInHelp} aria-label="Sign in with Google" title="Sign in with Google" onClick={onSignIn}><span className="google-mark">G</span><span>Sign in with Google</span></button>}
       </>}</div></div></aside>;

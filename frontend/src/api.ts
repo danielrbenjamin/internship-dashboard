@@ -1,3 +1,5 @@
+import {demoMode} from "./Routes";
+import {demoAsset, demoPdf} from "./demoAssets";
 
 export type Job = {
   id: string; title: string; company: string; location: string; url: string;
@@ -49,11 +51,20 @@ async function request(path: string, method: string, body?: object, signal?: Abo
 }
 
 export async function api<T>(path: string, method = "GET", body?: object, signal?: AbortSignal): Promise<T> {
+  if (demoMode && !path.startsWith("/map/")) {
+    const {demoRequest} = await import("./demo");
+    signal?.throwIfAborted();
+    return structuredClone(demoRequest(path, method, body)) as T;
+  }
   return (await request(path, method, body, signal)).json();
 }
 
 export async function pdfPreview(path: string, edit: {before: string; after: string; source_file?: string}) {
+  if (demoMode) return demoPdf(path);
   const file = await (await request(path, "POST", edit)).blob();
   if (!file.size || file.type !== "application/pdf") throw new Error("The PDF preview could not be opened.");
   return file;
+}
+export function assetHref(path: string) {
+  return demoMode ? demoAsset(path) : path;
 }

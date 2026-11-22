@@ -6,7 +6,7 @@ from urllib.parse import urlsplit
 import httpx
 from fastapi import HTTPException
 
-SEARCH_URL = "https://api.search.brave.com/res/v1/web/search"
+SEARCH_URL = "https://api.exa.ai/search"
 UBC = re.compile(r"\b(?:UBC|(?:the )?University of British Columbia)\b", re.IGNORECASE)
 ROLE_WORDS = {
     "engineer",
@@ -28,6 +28,8 @@ ROLE_WORDS = {
 
 
 def plain(value):
+    if not isinstance(value, str):
+        return ""
     return " ".join(unescape(re.sub(r"<[^>]+>", "", value)).split())
 
 
@@ -36,6 +38,8 @@ def rank_profiles(results, company, team):
     employer = re.compile(r"(?<!\w)" + re.escape(company) + r"(?!\w)", re.IGNORECASE)
     team_words = set(re.findall(r"[a-z]+", team.casefold())) - ROLE_WORDS
     for row in results:
+        if not isinstance(row, dict) or not isinstance(row.get("url"), str):
+            continue
         try:
             url = urlsplit(row["url"])
         except (KeyError, ValueError):
@@ -45,8 +49,12 @@ def rank_profiles(results, company, team):
         if not re.fullmatch(r"/in/[\w%-]+/?", url.path):
             continue
         title = re.sub(r"\s*\|\s*LinkedIn.*$", "", plain(row.get("title", "")), flags=re.IGNORECASE)
-        snippet = plain(row.get("description", ""))
-        evidence = " ".join([title, snippet, *(plain(s) for s in row.get("extra_snippets", []))])
+        highlights = row.get("highlights")
+        excerpts = [plain(value) for value in highlights[:6]] if isinstance(highlights, list) else []
+        evidence = " ".join([title, *excerpts])
+        snippet = next((excerpt for excerpt in excerpts if excerpt), "")
+        if len(snippet) > 320:
+            snippet = snippet[:317].rsplit(" ", 1)[0] + "…"
         name = re.split(r"\s+[-–—|]\s+", title, maxsplit=1)[0]
         if not name or len(name) > 100:
             continue
@@ -78,44 +86,41 @@ def rank_profiles(results, company, team):
 
 
 async def search_people(api_key, company, team):
-    if not api_key:
+    if not company:
+        raise HTTPException(422, "Enter an employer to search for.")
+    if not api_key.strip():
         raise HTTPException(
-            503, "Set BRAVE_SEARCH_API_KEY in the dashboard environment to search public LinkedIn profiles."
+            503, "Add EXA_API_KEY to .env to enable in-page LinkedIn search."
         )
-    company_term = company.replace('"', "")
-    team_term = " ".join(word for word in re.findall(r"[a-z]+", team.casefold()) if word not in ROLE_WORDS)
-    base = f'site:linkedin.com/in "{company_term}"'
-    queries = [base, f'{base} ("University of British Columbia" OR UBC)']
-    if team_term:
-        queries.insert(0, f"{base} {team_term}")
+    base = f"LinkedIn profiles for people who currently work at {company}"
+    team_phrase = f" in roles related to {team}" if team else ""
+    queries = [base + team_phrase, base + " and attended the University of British Columbia (UBC)"]
     async with httpx.AsyncClient(timeout=10, trust_env=False) as client:
 
         async def fetch(query):
-            response = await client.get(
+            response = await client.post(
                 SEARCH_URL,
-                headers={"X-Subscription-Token": api_key},
-                params={
-                    "q": query,
-                    "count": 12,
-                    "country": "CA",
-                    "extra_snippets": "true",
-                    "text_decorations": "false",
-                },
+                headers={"x-api-key": api_key.strip()},
+                json={"query": query, "category": "people", "type": "lite", "numResults": 12,
+                      "includeDomains": ["linkedin.com"], "contents": {"highlights": True}},
             )
             response.raise_for_status()
-            return response.json().get("web", {}).get("results", [])
+            payload = response.json()
+            rows = payload.get("results") if isinstance(payload, dict) else None
+            if not isinstance(rows, list):
+                raise TypeError("Unexpected Exa response")
+            return rows
 
         responses = await asyncio.gather(*(fetch(query) for query in queries), return_exceptions=True)
     successful = [response for response in responses if isinstance(response, list)]
     if not successful:
-        rate_limited = any(
-            isinstance(response, httpx.HTTPStatusError) and response.response.status_code == 429
-            for response in responses
-        )
-        if rate_limited:
+        codes = {result.response.status_code for result in responses if isinstance(result, httpx.HTTPStatusError)}
+        if 429 in codes:
             raise HTTPException(429, "The search provider is rate limiting requests. Try again shortly.")
-        raise HTTPException(
-            502, "Public profile search is unavailable. Check the Brave Search API key and try again."
-        )
+        if codes & {401, 403}:
+            raise HTTPException(502, "Exa refused the search. Check the server's EXA_API_KEY.")
+        if 402 in codes:
+            raise HTTPException(502, "Exa requires available search credits.")
+        raise HTTPException(502, "Public profile search is temporarily unavailable.")
     people = rank_profiles((row for batch in successful for row in batch), company, team)
     return {"people": people, "partial": len(successful) < len(responses)}

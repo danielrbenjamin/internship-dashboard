@@ -33,11 +33,10 @@ function Activity({days, series, title}: {days: string[]; series: Day[]; title: 
   </section>;
 }
 
-export function useOverviewStats(owner: boolean, sample?: OverviewStats) {
+export function useOverviewStats(owner: boolean) {
   const [stats, setStats] = useState<OverviewStats>();
   const [error, setError] = useState("");
   useEffect(() => {
-    if (sample) return;
     const controller = new AbortController();
     const url = "/api/analytics?offset_minutes=" + -new Date().getTimezoneOffset();
     const load = () => void api<OverviewStats>(url, "GET", undefined, controller.signal).then(value => {
@@ -47,8 +46,8 @@ export function useOverviewStats(owner: boolean, sample?: OverviewStats) {
     load();
     const timer = window.setInterval(load, 60000);
     return () => {controller.abort(); window.clearInterval(timer);};
-  }, [owner, sample]);
-  return {stats: sample ?? stats, error};
+  }, [owner]);
+  return {stats, error};
 }
 
 export function CatalogMetrics({totals}: {totals: OverviewStats["totals"]}) {
@@ -93,17 +92,15 @@ export function DiscoveryPanels({stats, owner, sourceName, openSource}: {
 
 type Priority = {id:string;view:"Replies"|"Referrals"|"Materials";label:string;title:string;due?:string;company?:string};
 
-export function Overview({name,tasks,openPriority,owner, sourceName, openSource, openCatalog, sample}: {
+export function Overview({name,tasks,openPriority,owner, sourceName, openSource, openCatalog}: {
   openPriority:(view:Priority["view"],id:string,company?:string)=>void;name?:string;tasks:{label:string;value:number;open:()=>void}[];
   owner: boolean; sourceName: (id: string) => string; openSource: (id: string) => void; openCatalog: () => void;
-  sample?: {stats: OverviewStats; priorities: Priority[]};
 }) {
-  const [livePriorities,setPriorities]=useState<Priority[]>();
-  useEffect(()=>{if(!owner || sample)return;const controller=new AbortController();
+  const [priorities,setPriorities]=useState<Priority[]>();
+  useEffect(()=>{if(!owner)return;const controller=new AbortController();
     const load=()=>api<Priority[]>("/api/owner/priorities","GET",undefined,controller.signal).then(setPriorities).catch(()=>{});
-    void load();const timer=setInterval(load,30000);return ()=>{controller.abort();clearInterval(timer)};},[owner,sample]);
-  const priorities = sample?.priorities ?? livePriorities;
-  const {stats, error} = useOverviewStats(owner, sample?.stats);
+    void load();const timer=setInterval(load,30000);return ()=>{controller.abort();clearInterval(timer)};},[owner]);
+  const {stats, error} = useOverviewStats(owner);
   const hour = new Date().getHours();
   const greeting = hour < 12 ? "morning" : hour < 18 ? "afternoon" : "evening";
   return <section className="desk-page">

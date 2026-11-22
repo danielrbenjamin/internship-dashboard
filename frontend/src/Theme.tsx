@@ -1,4 +1,5 @@
 import {createContext, useContext, useLayoutEffect, useState, type ReactNode} from "react";
+import {demoMode} from "./Routes";
 
 const key = "tern.theme";
 const ThemeContext = createContext({dark: false, toggleDark: () => {}});
@@ -11,7 +12,9 @@ export function ThemeProvider({children}: {children: ReactNode}) {
 
   useLayoutEffect(() => {
     document.documentElement.dataset.theme = dark ? "dark" : "light";
-    try {localStorage.setItem(key, dark ? "dark" : "light");} catch {}
+    if (!demoMode) {
+      try {localStorage.setItem(key, dark ? "dark" : "light");} catch {}
+    }
   }, [dark]);
 
   return <ThemeContext.Provider value={{dark, toggleDark: () => setDark(value => !value)}}>

@@ -163,11 +163,13 @@ def create_app(settings=None):
              offset: int = Query(0, ge=0, le=100000),
              saved_search: int | None = Query(None, ge=0), watchlist: bool = False,
              term: str = Query("", max_length=80), source: str = Query("", max_length=80),
-             discipline: str = Query("", max_length=40), map_view: bool = False):
+             discipline: str = Query("", max_length=40), map_view: bool = False,
+             posted_within: int = Query(30, ge=1, le=30)):
         if discipline and discipline not in DISCIPLINES:
             raise HTTPException(422, "Unknown discipline")
-        filters = (discipline, DISCIPLINES.get(discipline, ""), q, q, location, source, source, term, term, term, term)
-        sql = "FROM jobs WHERE active=1 AND " + RECENT + """
+        filters = (f"-{posted_within - 1} days", discipline, DISCIPLINES.get(discipline, ""), q, q,
+                   location, source, source, term, term, term, term)
+        sql = """FROM jobs WHERE active=1 AND posted_on BETWEEN date('now', ?) AND date('now')
                  AND (?='' OR title REGEXP ?)
                  AND (instr(lower(title),lower(?)) OR instr(lower(company),lower(?)))
                  AND instr(lower(location),lower(?))
@@ -504,5 +506,7 @@ def create_app(settings=None):
 
         for page in PAGE_PATHS:
             app.add_api_route(page, dashboard_page, methods=["GET", "HEAD"], include_in_schema=False)
+            if page not in ("/", "/demo"):
+                app.add_api_route("/demo" + page, dashboard_page, methods=["GET", "HEAD"], include_in_schema=False)
         app.mount("/", StaticFiles(directory=static, html=True), name="frontend")
     return app

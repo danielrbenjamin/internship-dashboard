@@ -46,7 +46,12 @@ def test_catalog_posting_window_and_overlapping_disciplines(app):
         for map_view in ("true", "false"):
             result = client.get("/api/jobs", params={"discipline": discipline, "map_view": map_view}).json()
             assert [job["requisition"] for job in result["jobs"]] == ["0", "1"]
+            recent = client.get("/api/jobs", params={
+                "discipline": discipline, "map_view": map_view, "posted_within": 7,
+            }).json()
+            assert [job["requisition"] for job in recent["jobs"]] == ["0"]
     assert client.get("/api/jobs?discipline=Software").json()["jobs"] == []
+    assert client.get("/api/jobs?posted_within=31").status_code == 422
     assert client.get("/api/analytics").json()["totals"]["openings"] == 2
 
 
@@ -372,6 +377,10 @@ def test_microsoft_signin_and_filtered_sync(app, monkeypatch):
 
 
 def test_referral_people_are_private_and_ranked(app, monkeypatch):
+    import json
+
+    import httpx
+
     from backend import people_search
 
     owner = TestClient(app)
@@ -379,26 +388,37 @@ def test_referral_people_are_private_and_ranked(app, monkeypatch):
     signed_session(app, owner, "google|owner")
     path = "/api/owner/referrals/people?company=Acme&team=Mechanical+Engineering+Intern+Summer+2027"
     assert guest.get(path).status_code == 401
-    app.state.settings.brave_search_api_key = ""
+    app.state.settings.exa_api_key = ""
     assert owner.get(path).status_code == 503
-    app.state.settings.brave_search_api_key = "fixture-key"
+    app.state.settings.exa_api_key = "fixture-key"
     mock_rows = [
         {"url": "https://www.linkedin.com/in/general", "title": "General Person - Acme"},
-        {"url": "https://ca.linkedin.com/in/alumni", "title": "Alumni Person - Acme", "description": "University of British Columbia"},
+        {"url": "https://ca.linkedin.com/in/alumni", "title": "Alumni Person - Acme", "highlights": ["University of British Columbia"]},
         {"url": "https://www.linkedin.com/in/team", "title": "Team Person - Acme Mechanical Engineer"},
-        {"url": "https://www.linkedin.com/in/team/?trk=duplicate", "title": "Team Person - Acme", "extra_snippets": ["UBC"]},
+        {"url": "https://www.linkedin.com/in/team/?trk=duplicate", "title": "Team Person - Acme", "highlights": ["UBC"]},
         {"url": "https://linkedin.com.example.org/in/unrelated", "title": "Mechanical Engineer at Acme"},
+        {"url": "https://www.linkedin.com/in/other", "title": "Other Person - Other Employer", "highlights": ["Mechanical Engineer"]},
     ]
-    import httpx
-
+    queries = []
     client = httpx.AsyncClient
+
     def search(request):
-        assert request.headers["X-Subscription-Token"] == "fixture-key"
-        return httpx.Response(200, json={"web": {"results": mock_rows}})
+        assert request.method == "POST"
+        assert str(request.url) == "https://api.exa.ai/search"
+        assert request.headers["x-api-key"] == "fixture-key"
+        payload = json.loads(request.content)
+        assert payload["category"] == "people"
+        assert payload["includeDomains"] == ["linkedin.com"]
+        assert payload["contents"] == {"highlights": True}
+        queries.append(payload["query"])
+        return httpx.Response(200, json={"results": mock_rows})
 
     monkeypatch.setattr(people_search.httpx, "AsyncClient",
                         lambda **kwargs: client(transport=httpx.MockTransport(search), **kwargs))
     result = owner.get(path).json()["people"]
+    assert len(queries) == 2
+    assert any("Acme" in query and "Mechanical" in query for query in queries)
+    assert any("Acme" in query and "University of British Columbia" in query for query in queries)
     assert [p["name"] for p in result] == ["Team Person", "Alumni Person", "General Person"]
     assert result[0]["team_match"] and result[0]["ubc"]
     reply = owner.post("/api/owner/contacts", headers=ORIGIN, json={

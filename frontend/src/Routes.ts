@@ -2,7 +2,6 @@ import type {View} from "./Navigation";
 
 const paths: Record<View, string> = {
   Overview: "/",
-  Demo: "/demo",
   Browse: "/jobs",
   Screening: "/where-to-apply",
   Saved: "/saved",
@@ -19,12 +18,14 @@ const paths: Record<View, string> = {
   Settings: "/settings",
 };
 
-export const publicViews: readonly View[] = ["Overview", "Browse", "Sources", "Demo"];
+export const publicViews: readonly View[] = ["Overview", "Browse", "Sources"];
+export const demoMode = /^\/demo(?:\/|$)/.test(window.location.pathname);
 type RouteOptions = {job?: string; tab?: string; company?: string; team?: string; reply?: string};
 export type Route = {view: View} & RouteOptions;
 
 export function readRoute(): Route {
-  const pathname = window.location.pathname.replace(/\/$/, "") || "/";
+  const path = demoMode ? window.location.pathname.slice("/demo".length) : window.location.pathname;
+  const pathname = path.replace(/\/$/, "") || "/";
   const view = (Object.keys(paths) as View[]).find(key => paths[key] === pathname) ?? "Overview";
   const query = new URLSearchParams(window.location.search);
   const job = query.get("job") ?? "";
@@ -42,5 +43,6 @@ export function readRoute(): Route {
 export function routeUrl({view, ...options}: Route) {
   const query = new URLSearchParams();
   for (const [key, value] of Object.entries(options)) if (value) query.set(key, value);
-  return paths[view] + (query.size ? "?" + query.toString() : "");
+  const path = demoMode ? "/demo" + (view === "Overview" ? "" : paths[view]) : paths[view];
+  return path + (query.size ? "?" + query.toString() : "");
 }
