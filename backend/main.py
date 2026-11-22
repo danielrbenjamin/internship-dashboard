@@ -35,7 +35,7 @@ from .models import ApplicationUpdate, CoverLetter, Edit, OwnerSettings, Project
 from .pages import PAGE_PATHS
 from .posting_text import posting_markdown
 from .referrals import install_referrals
-from .workflows import install_workflows, usage_status
+from .workflows import install_workflows, matching_skills, usage_status
 
 Owner = Annotated[str, Depends(require_owner)]
 
@@ -207,6 +207,7 @@ def create_app(settings=None):
         result = public_job(row)
         owner=current_owner(request)
         if owner:
+            result["matched_skills"] = matching_skills(row, db.settings(owner).get("skills", []))
             result["contacts"]=[{"id":c["id"],"name":json.loads(c["value"])["name"]} for c in
                                 db.all("SELECT id,value FROM contacts WHERE owner=? AND company=? ORDER BY name",(owner,company_key(row["company"])))]
             result.update(description=posting_markdown(row["description"]), fingerprint=row["fingerprint"],
@@ -356,7 +357,7 @@ def create_app(settings=None):
         try:
             kind = "cover" if request.url.path.endswith("/cover-template") else "resume"
             return {"id": store_version(db, settings, owner, app_id, kind=kind)}
-        except (ValueError, OSError, zipfile.BadZipFile, httpx.HTTPError) as exc:
+        except (ValueError, OSError, zipfile.BadZipFile, httpx.HTTPError, subprocess.SubprocessError) as exc:
             detail = str(exc) if type(exc) is ValueError else "Could not import the template. Check the repository, branch and GitHub read access."
             raise HTTPException(422, detail) from None
 

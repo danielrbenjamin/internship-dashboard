@@ -1,4 +1,4 @@
-import {Bell, BookOpen, Building2, CalendarDays, ChartNoAxesCombined, ChevronDown, Files, House, Inbox, ListFilter, LogOut, Play, Send, Settings, Star, Users, Search, Moon, Sun, PanelLeftClose} from "lucide-react";
+import {Bell, BookOpen, Building2, CalendarDays, ChartNoAxesCombined, ChevronDown, Files, House, Inbox, ListFilter, LogOut, Menu, Play, Send, Settings, Star, Users, Search, Moon, Sun, PanelLeftClose, X} from "lucide-react";
 import {useEffect, useRef, useState} from "react";
 import {useTheme} from "./Theme";
 import {demoMode, publicViews} from "./Routes";
@@ -10,10 +10,11 @@ const sections=[
   {name:"Inbox & network",links:[["Replies","Email & deadlines",Inbox],["Referrals","Referrals",Users]]},
   {name:"Setup",links:[["Sources","Sources",Building2],["Settings","Settings",Settings]]}
 ] as const;
-export function Navigation({view,navigate,owner,account,loginAvailable,signInHelp,onSignIn,onSignOut,unread,openSettings,collapsed,toggleSidebar,signInUrl}:{
+export function Navigation({view,navigate,owner,account,loginAvailable,signInHelp,onSignIn,onSignOut,unread,reminderCount,openSettings,collapsed,toggleSidebar,signInUrl,startDemoTour}:{
   signInUrl:string;collapsed:boolean;toggleSidebar:()=>void;
   view:View;navigate:(view:View)=>void;owner:boolean;account?:{name?:string;email?:string;picture?:string};loginAvailable:boolean;
-  signInHelp:boolean;onSignIn:()=>void;onSignOut:()=>void;unread:number;openSettings:(tab:string)=>void;
+  signInHelp:boolean;onSignIn:()=>void;onSignOut:()=>void;unread:number;reminderCount:number;openSettings:(tab:string)=>void;
+  startDemoTour:()=>void;
 }){
   const {dark, toggleDark} = useTheme();
   const name=account?.name||account?.email||"Google account";
@@ -23,6 +24,15 @@ export function Navigation({view,navigate,owner,account,loginAvailable,signInHel
   const dialog=useRef<HTMLDialogElement>(null);
   const [query,setQuery]=useState("");
   const [accountOpen, setAccountOpen] = useState(false);
+  const [mobile, setMobile] = useState(() => window.matchMedia("(max-width: 780px)").matches);
+  const [mobileOpen, setMobileOpen] = useState(false);
+  const rail = collapsed && !mobile;
+  useEffect(() => {
+    const viewport = window.matchMedia("(max-width: 780px)");
+    const sync = () => {setMobile(viewport.matches); if (!viewport.matches) setMobileOpen(false);};
+    viewport.addEventListener("change", sync);
+    return () => viewport.removeEventListener("change", sync);
+  }, []);
   useEffect(() => {
     const dismiss = () => {
       if (accountMenu.current?.matches(":popover-open")) accountMenu.current.hidePopover();
@@ -36,6 +46,7 @@ export function Navigation({view,navigate,owner,account,loginAvailable,signInHel
   }, []);
   useEffect(() => {
     if (accountMenu.current?.matches(":popover-open")) accountMenu.current.hidePopover();
+    setMobileOpen(false);
   }, [view, collapsed]);
   function showSearch(){
     setQuery("");
@@ -61,13 +72,17 @@ export function Navigation({view,navigate,owner,account,loginAvailable,signInHel
     dialog.current?.close();
     command.open();
   }
-  return <aside className="navigation">
+  return <aside className="navigation" data-mobile-open={mobileOpen}>
     <div className="nav-heading">
-      <button ref={brand} className="brand" aria-label={collapsed ? "Expand sidebar" : "Tern"}
-        title={collapsed ? "Expand sidebar" : undefined}
-        aria-expanded={collapsed ? false : undefined} aria-controls={collapsed ? "sidebar-views" : undefined}
-        onClick={collapsed ? toggleSidebar : () => navigate("Overview")}><BrandMark /><span>Tern</span></button>
-      {!collapsed && <button className="sidebar-toggle" onClick={() => { toggleSidebar(); brand.current?.focus(); }} aria-expanded
+      <button className="mobile-menu-toggle" aria-label={mobileOpen ? "Close navigation" : "Open navigation"}
+        aria-expanded={mobileOpen} aria-controls="sidebar-views" onClick={() => setMobileOpen(open => !open)}>
+        {mobileOpen ? <X size={19} /> : <Menu size={19} />}
+      </button>
+      <button ref={brand} className="brand" aria-label={rail ? "Expand sidebar" : "Tern"}
+        title={rail ? "Expand sidebar" : undefined}
+        aria-expanded={rail ? false : undefined} aria-controls={rail ? "sidebar-views" : undefined}
+        onClick={rail ? toggleSidebar : () => navigate("Overview")}><BrandMark /><span>Tern</span></button>
+      {!rail && <button className="sidebar-toggle" onClick={() => { toggleSidebar(); brand.current?.focus(); }} aria-expanded
         aria-controls="sidebar-views" aria-label="Collapse sidebar" title="Collapse sidebar">
         <PanelLeftClose size={17} />
       </button>}
@@ -87,8 +102,9 @@ export function Navigation({view,navigate,owner,account,loginAvailable,signInHel
     </dialog>
     <nav id="sidebar-views" aria-label="Dashboard views">{sections.map(s=>{
       const links=s.links.filter(([v])=>owner||publicViews.includes(v));
-      return links.length>0&&<div className="nav-group" key={s.name}><h2>{s.name}</h2>{links.map(([v,title,Icon])=><button key={v} aria-label={title} title={title} aria-current={v===view?"page":undefined} onClick={()=>navigate(v)}>
-        <Icon size={16} strokeWidth={1.7}/><span className="nav-label">{title}</span>{v==="Alerts"&&unread>0&&<span className="unread">{unread}</span>}</button>)}</div>})}</nav>
+      return links.length>0&&<div className="nav-group" key={s.name}><h2>{s.name}</h2>{links.map(([v,title,Icon])=><button key={v} aria-label={title} title={title} aria-current={v===view?"page":undefined} onClick={()=>{setMobileOpen(false);navigate(v);}}>
+        <Icon size={16} strokeWidth={1.7}/><span className="nav-label">{title}</span>{v==="Alerts"&&unread>0&&<span className="unread">{unread}</span>}
+        {v==="Replies"&&reminderCount>0&&<span className="unread" title={reminderCount + " upcoming or overdue"}>{reminderCount}</span>}</button>)}</div>})}</nav>
     <div className="sidebar-footer">
       <button className="theme-control" aria-label={dark ? "Light mode" : "Dark mode"} title={dark ? "Light mode" : "Dark mode"} onClick={toggleDark}>
         {dark ? <Sun size={15} aria-hidden="true" /> : <Moon size={15} aria-hidden="true" />}
@@ -113,12 +129,13 @@ export function Navigation({view,navigate,owner,account,loginAvailable,signInHel
             menu.style.top = bounds.top > 150 ? "auto" : bounds.bottom + 6 + "px";
           }} onToggle={event => setAccountOpen(event.newState === "open")}>
           {account?.email && <small>{account.email}</small>}
+          {demoMode && <button onClick={() => {accountMenu.current?.hidePopover(); startDemoTour();}}><Play size={15}/>Take the tour</button>}
           <button onClick={() => {accountMenu.current?.hidePopover(); onSignOut();}}><LogOut size={15}/>{demoMode ? "Exit demo" : "Sign out"}</button>
         </div>
       </> : <>
-        <a className="button demo-link" href="/demo" aria-label="Demo mode" title="Demo mode"><Play size={15} /><span>Demo mode</span></a>
-        {loginAvailable ? <a className="button" aria-label="Sign in with Google" title="Sign in with Google" href={signInUrl}><span className="google-mark">G</span><span>Sign in with Google</span></a> :
-          <button aria-expanded={signInHelp} aria-label="Sign in with Google" title="Sign in with Google" onClick={onSignIn}><span className="google-mark">G</span><span>Sign in with Google</span></button>}
+        <a className="button demo-link" href="/demo" aria-label="Demo mode" title="Demo mode"><Play size={15} /><span>{mobile ? "Demo" : "Demo mode"}</span></a>
+        {loginAvailable ? <a className="button" aria-label="Sign in with Google" title="Sign in with Google" href={signInUrl}><span className="google-mark">G</span><span>{mobile ? "Sign in" : "Sign in with Google"}</span></a> :
+          <button aria-expanded={signInHelp} aria-label="Sign in with Google" title="Sign in with Google" onClick={onSignIn}><span className="google-mark">G</span><span>{mobile ? "Sign in" : "Sign in with Google"}</span></button>}
       </>}</div></div></aside>;
 }
 
