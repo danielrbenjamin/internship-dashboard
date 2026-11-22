@@ -1,4 +1,4 @@
-import {Bell, BookOpen, Building2, CalendarDays, ChartNoAxesCombined, ChevronDown, Files, House, Inbox, ListFilter, LogOut, Menu, Play, Send, Settings, Star, Users, Search, Moon, Sun, PanelLeftClose, X} from "lucide-react";
+import {Bell, BookOpen, Building2, CalendarDays, ChartNoAxesCombined, ChevronDown, Files, House, Inbox, ListFilter, LogIn, LogOut, Menu, Play, Send, Settings, Star, Users, Search, Moon, Sun, PanelLeftClose, X} from "lucide-react";
 import {useEffect, useRef, useState} from "react";
 import {useTheme} from "./Theme";
 import {demoMode, publicViews} from "./Routes";
@@ -27,6 +27,10 @@ export function Navigation({view,navigate,owner,account,loginAvailable,signInHel
   const [mobile, setMobile] = useState(() => window.matchMedia("(max-width: 780px)").matches);
   const [mobileOpen, setMobileOpen] = useState(false);
   const rail = collapsed && !mobile;
+  const signInContent = <>
+    <LogIn className="sign-in-icon" size={16} aria-hidden="true" />
+    <span className="sign-in-desktop">Sign in with Google</span><span className="sign-in-mobile">Sign in</span>
+  </>;
   useEffect(() => {
     const viewport = window.matchMedia("(max-width: 780px)");
     const sync = () => {setMobile(viewport.matches); if (!viewport.matches) setMobileOpen(false);};
@@ -134,8 +138,8 @@ export function Navigation({view,navigate,owner,account,loginAvailable,signInHel
         </div>
       </> : <>
         <a className="button demo-link" href="/demo" aria-label="Demo mode" title="Demo mode"><Play size={15} /><span>{mobile ? "Demo" : "Demo mode"}</span></a>
-        {loginAvailable ? <a className="button" aria-label="Sign in with Google" title="Sign in with Google" href={signInUrl}><span className="google-mark">G</span><span>{mobile ? "Sign in" : "Sign in with Google"}</span></a> :
-          <button aria-expanded={signInHelp} aria-label="Sign in with Google" title="Sign in with Google" onClick={onSignIn}><span className="google-mark">G</span><span>{mobile ? "Sign in" : "Sign in with Google"}</span></button>}
+        {loginAvailable ? <a className="button sign-in-control" aria-label="Sign in with Google" title="Sign in with Google" href={signInUrl}>{signInContent}</a> :
+          <button className="sign-in-control" aria-expanded={signInHelp} aria-label="Sign in with Google" title="Sign in with Google" onClick={onSignIn}>{signInContent}</button>}
       </>}</div></div></aside>;
 }
 

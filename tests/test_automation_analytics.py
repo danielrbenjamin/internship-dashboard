@@ -16,7 +16,10 @@ from backend.models import Edit
 
 
 def workspace(tmp_path):
-    settings = Settings(data_dir=tmp_path, owner_subject="owner")
+    settings = Settings(
+        _env_file=None, data_dir=tmp_path, codex_home=tmp_path / "codex", owner_subject="owner",
+        session_secret="test-only-automation-session-key",
+    )
     db = Database(tmp_path / "dashboard.sqlite3")
     import_jobs(db, "fixture", [{**POSTING, "title": "Mechanical Engineering Intern"}])
     job = db.one("SELECT * FROM jobs")

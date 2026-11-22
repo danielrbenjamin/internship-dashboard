@@ -20,7 +20,7 @@ ORIGIN = {"Origin": "http://localhost:8000"}
 
 @pytest.fixture
 def app(tmp_path):
-    return create_app(Settings(data_dir=tmp_path, session_secret=SECRET, owner_subject="google|owner",
+    return create_app(Settings(_env_file=None, data_dir=tmp_path, session_secret=SECRET, owner_subject="google|owner",
                                auth0_domain="example.auth0.com"))
 
 
