@@ -2,8 +2,8 @@ import {useEffect, useRef, useState} from "react";
 import type {SavedContact} from "./Referrals";
 import {api, type Application} from "./api";
 
-type Person = {name: string; url: string; headline: string; snippet: string; team_match: boolean; ubc: boolean};
-type Results = {people: Person[]; partial: boolean};
+type Person = {name: string; url: string; headline: string; snippet: string; team_match: boolean; school_match?: boolean; experience_matches?: string[]};
+type Results = {people: Person[]; partial: boolean; school?: string};
 
 export function linkedInPeople(company: string, keywords = "") {
   const url = new URL("https://www.linkedin.com/search/results/people/");
@@ -78,8 +78,7 @@ export function FindPeople({apps, initialCompany, initialTeam, contacts, reload}
     }}>
       <label>Employer<input required maxLength={160} list="referral-employers" value={company} onChange={e => setCompany(e.target.value)} /></label>
       <datalist id="referral-employers">{companies.map(c => <option key={c} value={c} />)}</datalist>
-      <label>Team or role<input maxLength={120} value={team} onChange={e => setTeam(e.target.value)} list="referral-teams" placeholder="Optional" /></label>
-      <datalist id="referral-teams">{["Mechanical Engineer", "Hardware Engineer", "Robotics Engineer", "University Recruiter"].map(k => <option key={k} value={k} />)}</datalist>
+      <label>Team or role<input maxLength={120} value={team} onChange={e => setTeam(e.target.value)} placeholder="Optional" /></label>
       <button className="primary" disabled={loading || !company.trim()}>{loading ? "Searching…" : "Find people"}</button>
     </form>
     {message && <p role="status">{message}</p>}
@@ -101,7 +100,9 @@ export function FindPeople({apps, initialCompany, initialTeam, contacts, reload}
           <div>
             <strong>{person.name}</strong>
             {person.headline !== person.name && <p>{person.headline.slice(person.name.length).replace(/^\s*[-–—|]\s*/, "")}</p>}
-            {(person.team_match || person.ubc) && <p>{[person.team_match && "Team or role match", person.ubc && "UBC mentioned"].filter(Boolean).join(" · ")}</p>}
+            {(person.team_match || person.school_match) && <p>{[person.team_match && "Team or role match",
+              person.school_match && results.school].filter(Boolean).join(" · ")}</p>}
+            {!!person.experience_matches?.length && <p>Experience · {person.experience_matches.join(", ")}</p>}
             {person.snippet && <p>{person.snippet}</p>}
           </div>
           <a href={person.url} target="_blank" rel="noreferrer">Profile</a>
