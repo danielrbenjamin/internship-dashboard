@@ -3,9 +3,8 @@ import {useEffect, useLayoutEffect, useRef, useState, type CSSProperties} from "
 import {FolderTree, Maximize2, Minimize2, PanelRight} from "lucide-react";
 import {AIBadge, CodexHint} from "./CodexConnection";
 import {PaneDivider} from "./PaneDivider";
-import * as monaco from "monaco-editor/esm/vs/editor/editor.api";
-import "monaco-editor/esm/vs/editor/editor.all";
-import Worker from "monaco-editor/esm/vs/editor/editor.worker?worker";
+import * as monaco from "monaco-editor";
+import Worker from "monaco-editor/editor/editor.worker.js?worker";
 import {useTheme} from "./Theme";
 import {api, assetHref, type Task,type Document} from "./api";
 import {demoMode} from "./Routes";
