@@ -28,6 +28,20 @@ def safe_path(name):
     return path
 
 
+def check_github_response(response, missing):
+    code = response.status_code
+    if code == 429 or (code == 403 and response.headers.get("x-ratelimit-remaining") == "0"):
+        raise ValueError("GitHub's request limit was reached. Try again later or configure GITHUB_TOKEN.")
+    if code == 401:
+        raise ValueError("GitHub rejected GITHUB_TOKEN. Check that the token is valid and has Contents read access.")
+    if code == 403:
+        raise ValueError("GitHub denied access. Grant GITHUB_TOKEN Contents read access to this repository.")
+    if code == 404:
+        raise ValueError(missing)
+    if response.is_error:
+        raise ValueError(f"GitHub returned HTTP {code}. Try importing the template again later.")
+
+
 def fetch_resume(directory, profile, token):
     import httpx
 
@@ -40,17 +54,22 @@ def fetch_resume(directory, profile, token):
         headers["Authorization"] = f"Bearer {token}"
     with httpx.Client(timeout=25, trust_env=False) as client:
         api = f"https://api.github.com/repos/{repo}"
-        ref = quote(profile["resume_branch"], safe="")
+        branch = profile["resume_branch"]
+        ref = quote(branch, safe="")
         response = client.get(f"{api}/commits/{ref}", headers=headers)
+        check_github_response(response, f"GitHub cannot read {repo} at branch '{branch}'. "
+                              "Check the branch and grant GITHUB_TOKEN Contents read access if the repository is private.")
         response.raise_for_status()
         sha = response.json()["sha"]
         if not re.fullmatch(r"[0-9a-f]{40}", sha):
             raise ValueError("Invalid repository commit")
         redirect = client.get(f"{api}/zipball/{sha}", headers=headers)
+        check_github_response(redirect, f"GitHub could not create an archive for {repo}. Check repository access.")
         location = redirect.headers.get("location", "")
         if redirect.status_code != 302 or not location.startswith("https://codeload.github.com/"):
             raise ValueError("GitHub archive unavailable")
         with client.stream("GET", location) as archive:
+            check_github_response(archive, "The GitHub archive is unavailable. Try importing the template again.")
             archive.raise_for_status()
             data = bytearray()
             for chunk in archive.iter_bytes():
@@ -63,7 +82,7 @@ def fetch_resume(directory, profile, token):
 def fetch_cover_template(directory, settings):
     repo = settings.cover_letter_repo
     if not re.fullmatch(r"[\w.-]+/[\w.-]+", repo):
-        raise ValueError("Set COVER_LETTER_REPO on the server to import a cover-letter template")
+        raise ValueError("Set the cover-letter repository in Settings → Profile or set COVER_LETTER_REPO in .env.")
     profile = {"resume_repo": repo, "resume_branch": settings.cover_letter_branch,
                "resume_entry": settings.cover_letter_entry}
     if settings.github_token or not shutil.which("gh"):
@@ -91,6 +110,7 @@ def unpack_template(directory, entry, sha, data):
         if len(files) > 1000 or sum(file.file_size for file in files) > 60_000_000:
             raise ValueError("Repository archive exceeds extraction limit")
         seen = set()
+        latex_files = []
         for file in files:
             parts = file.filename.split("/", 1)
             if file.is_dir() or len(parts) != 2 or any(part.startswith(".") for part in parts[1].split("/")):
@@ -99,12 +119,17 @@ def unpack_template(directory, entry, sha, data):
             if stat.S_ISLNK(file.external_attr >> 16) or str(path).casefold() in seen:
                 raise ValueError("Unsupported repository archive")
             seen.add(str(path).casefold())
+            if path.suffix == ".tex":
+                latex_files.append(path)
             target = directory.joinpath(*path.parts)
             target.parent.mkdir(parents=True, exist_ok=True)
             with bundle.open(file) as source, target.open("xb") as output:
                 shutil.copyfileobj(source, output)
-    if not (directory / entry).is_file():
-        raise ValueError("The configured LaTeX entry does not exist")
+    if entry not in latex_files:
+        latex_files.sort(key=lambda path: (len(path.parts), path.as_posix()))
+        available = ", ".join(path.as_posix() for path in latex_files[:5])
+        detail = f" Available LaTeX files include {available}." if available else ""
+        raise ValueError(f"LaTeX entry '{entry}' was not found. Check the filename and capitalization." + detail)
     return sha, str(entry)
 
 

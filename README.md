@@ -65,7 +65,7 @@ Watchlists and saved searches live in the owner workspace. Commas separate alter
 
 ## Résumé and Codex
 
-In Settings, specify the GitHub repository as `owner/repository`, the branch, and the relative LaTeX entry filename. For a private repository, set a fine-grained `GITHUB_TOKEN` with Contents read access to that repository alone. Enter the verified experience and eligibility profile directly in Settings.
+In Settings, specify each GitHub template repository as `owner/repository`, its branch, and the exact relative LaTeX filename, including capitalization. For private templates, set a fine-grained `GITHUB_TOKEN` with Contents read access to the selected private résumé and cover-letter repositories. Enter the verified experience and eligibility profile directly in Settings.
 
 Open Application materials → My templates to import your GitHub LaTeX project. Configure the repository, entry file and branch for each template in Settings → Profile. Open a tracked application to make a role-specific copy using Use my saved template. Edit project files in the browser, review individual Codex proposals as side-by-side diffs, and merge the changes you want into your working copy. Save version checkpoints the edited files. Recompile PDF saves and renders them together. A private repository needs read access on the server.
 
@@ -134,4 +134,4 @@ The catalog tests exercise duplicate imports, alert deduplication, watchlist upd
 
 **Email & deadlines → Manage inboxes** connects Gmail with a Google app password or Outlook with Microsoft device sign-in. The worker looks for employer replies in the last 14 days. Matched mailbox confirmations, interviews and rejections update the application stage with an undo option. Use the legacy MAIL_* settings for a custom IMAP folder. Connected inbox credentials are encrypted with a key derived from SESSION_SECRET. Rotating that secret requires reconnecting inboxes.
 
-**Referrals** uses Exa's people search to find public LinkedIn profiles by employer and team. Results prioritize team matches and UBC mentions. Saved contacts also appear for the selected employer. For in-page results, create an [Exa API key](https://dashboard.exa.ai/api-keys), set `EXA_API_KEY` in `.env`, and restart the app. A direct LinkedIn search is available when in-page results are unavailable.
+**Referrals** uses Exa's people search to find public LinkedIn profiles by employer and team. Set a preferred school, experience keywords, and ranking priority in Settings → Profile. Saved contacts also appear for the selected employer. For in-page results, create an [Exa API key](https://dashboard.exa.ai/api-keys), set `EXA_API_KEY` in `.env`, and restart the app. A direct LinkedIn search is available when in-page results are unavailable.

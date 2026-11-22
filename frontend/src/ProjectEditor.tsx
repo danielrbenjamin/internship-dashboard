@@ -1,7 +1,7 @@
 /// <reference types="vite/client" />
 import {useEffect, useLayoutEffect, useRef, useState, type CSSProperties} from "react";
 import {FolderTree, Maximize2, Minimize2, PanelRight} from "lucide-react";
-import {CodexHint} from "./CodexConnection";
+import {AIBadge, CodexHint} from "./CodexConnection";
 import {PaneDivider} from "./PaneDivider";
 import * as monaco from "monaco-editor/esm/vs/editor/editor.api";
 import "monaco-editor/esm/vs/editor/editor.all";
@@ -214,7 +214,7 @@ export default function ProjectEditor({doc,tasks,onVersion,suggest,codexReady=fa
     <section className="editor-pane"><div className="pane-title">{name} {showingPreparedDiff ? " · Previous ↔ Prepared PDF source" : review?" · Current ↔ Codex proposal":compare?" · Saved ↔ Working copy":""}</div>
     {source ? <Code key={name} text={showingPreparedDiff ? previousSource.content : compare?source.content:text}
       proposed={showingPreparedDiff ? source.content : compare?text:proposed} onChange={change}/> : <p>Loading file…</p>}
-    <div className="editor-review">{source&&draft[name]!==undefined&&!review&&<button onClick={()=>setCompare(!compare)}>{compare?"Back to editor":"Compare working copy"}</button>}{suggest&&<button disabled={!codexReady||dirty||busy||!name.endsWith(".tex")||!source||tasks.some(t=>["queued","running"].includes(t.status))} onClick={async()=>{setBusy(true);try{await suggest(name)}catch(e){setMessage(String(e))}finally{setBusy(false)}}}>Request Codex edits</button>}
+    <div className="editor-review">{source&&draft[name]!==undefined&&!review&&<button onClick={()=>setCompare(!compare)}>{compare?"Back to editor":"Compare working copy"}</button>}{suggest&&<button disabled={!codexReady||dirty||busy||!name.endsWith(".tex")||!source||tasks.some(t=>["queued","running"].includes(t.status))} onClick={async()=>{setBusy(true);try{await suggest(name)}catch(e){setMessage(String(e))}finally{setBusy(false)}}}>Request Codex edits <AIBadge /></button>}
     {doc.verified && name === doc.entry && source?.parent && <button onClick={() => void comparePrepared()}>
       {showingPreparedDiff ? "Back to editor" : "Compare prepared version"}</button>}
     {suggest && !codexReady && connectCodex && <CodexHint connect={connectCodex} />}

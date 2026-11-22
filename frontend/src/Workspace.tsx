@@ -1,11 +1,11 @@
-import {CodexConnection, CodexHint} from "./CodexConnection";
+import {AIBadge, CodexConnection, CodexHint} from "./CodexConnection";
 import {PageHeader} from "./PageHeader";
 
 import {lazy, Suspense, useEffect, useState} from "react";
 import {MailSettings} from "./MailSettings";
 import {PostingText} from "./PostingText";
 import {api, assetHref, formatDate, statuses} from "./api";
-import type {Application, Details, Document, Job, Profile, Search} from "./api";
+import type {Application, Details, Document, Job, Profile, ScoringWeights, Search} from "./api";
 
 const ProjectEditor=lazy(()=>import("./ProjectEditor"));
 
@@ -68,6 +68,7 @@ export function Workspace({job, application, reload, codexReady, connectCodex}: 
   }
 
   return <section className="workspace" aria-label="Private application workspace">
+    {!!job.matched_skills?.length && <p className="muted">Matched skills · {job.matched_skills.join(", ")}</p>}
     <details className="desk-card" open={!application}><summary>Tracking details</summary>
     <form onSubmit={event => {
       event.preventDefault();
@@ -102,13 +103,13 @@ export function Workspace({job, application, reload, codexReady, connectCodex}: 
       </div>
       <div className="actions">
         <button className="primary" disabled={!codexReady || busy || pending || !details?.posting.description}
-          onClick={() => action(() => api(route + "/prepare", "POST"), "Both PDFs queued for preparation.")}>Prepare both PDFs</button>
+          onClick={() => action(() => api(route + "/prepare", "POST"), "Both PDFs queued for preparation.")}>Prepare both PDFs <AIBadge /></button>
         <button disabled={busy} onClick={() => action(async () => {
           const result = await api<{id: string}>(route + (material === "resume" ? "/resume" : "/cover-template"), "POST");
           setSelected(result.id);
         }, "GitHub snapshot imported.")}>Import latest from GitHub</button>
         <button disabled={busy} onClick={()=>action(async()=>{const r=await api<{id:string}>(route+"/from-template/"+material,"POST");setSelected(r.id);},"Copied base template.")}>Use my saved template</button>
-        {!doc && <button disabled={!codexReady||busy||pending||!details?.posting.description} onClick={()=>action(()=>api(route+"/ai","POST"),"Review queued.")}>Assess eligibility</button>}
+        {!doc && <button disabled={!codexReady||busy||pending||!details?.posting.description} onClick={()=>action(()=>api(route+"/ai","POST"),"Review queued.")}>Assess eligibility <AIBadge /></button>}
       </div>
       </div>
       {!codexReady && <CodexHint connect={connectCodex} />}
@@ -128,7 +129,7 @@ export function Workspace({job, application, reload, codexReady, connectCodex}: 
       {material === "cover" && <details open={letter !== undefined || undefined}><summary>Plain-text cover letter</summary><section aria-label="Cover letter editor">
         <div className="actions">
           <button disabled={!codexReady || busy || pending || !details?.posting.description} onClick={() => action(
-            () => api(route + "/ai?cover_letter=true", "POST"), "Cover letter request queued.")}>Draft with Codex</button>
+            () => api(route + "/ai?cover_letter=true", "POST"), "Cover letter request queued.")}>Draft with Codex <AIBadge /></button>
           {!!selectedLetter && <>
             <a className="button" href={assetHref(`${route}/cover-letters/${selectedLetter.id}/txt`)} download>Download text</a>
             <a className="button" href={assetHref(`${route}/cover-letters/${selectedLetter.id}/pdf`)} download>Download PDF</a>
@@ -188,10 +189,16 @@ function TaskResult({task, onLetter}: {task: {status: string; result: string};
 }
 
 const blank: Search = {name: "", keywords: "", location: "", term: "", preferred: "", alerts: true};
+const defaultWeights: ScoringWeights = {saved_search: 50, watchlist: 50, search_detail: 15, search_detail_cap: 50, skill: 10, skill_cap: 30};
+const scoreLabels: Record<keyof ScoringWeights, string> = {
+  saved_search: "Saved search match", watchlist: "Watchlisted employer", search_detail: "Each matching search detail",
+  search_detail_cap: "Maximum search detail points", skill: "Each matched skill", skill_cap: "Maximum skill points",
+};
 
 export function SettingsPanel({profile, save, tab, setTab, codexStatus}: {codexStatus: string; tab: string; setTab: (tab: string) => void; profile: Profile; save: (value: Profile) => Promise<void>}) {
   const [value, setValue] = useState(profile);
   const [watchlist, setWatchlist] = useState(profile.watchlist.join(", "));
+  const [skills, setSkills] = useState((profile.skills ?? []).join(", "));
   const [message, setMessage] = useState("");
   const [busy, setBusy] = useState(false);
   const update = (index: number, change: Partial<Search>) => setValue({
@@ -202,7 +209,8 @@ export function SettingsPanel({profile, save, tab, setTab, codexStatus}: {codexS
     {tab==="Email inboxes"?<MailSettings/>:tab==="Codex"?<CodexConnection status={codexStatus}/>:<form onSubmit={async event => {
       event.preventDefault(); setBusy(true); setMessage("");
       try {
-        await save({...value, watchlist: watchlist.split(",").map(item => item.trim()).filter(Boolean)});
+        await save({...value, watchlist: watchlist.split(",").map(item => item.trim()).filter(Boolean),
+          skills: skills.split(/[,\n]/).map(item => item.trim()).filter(Boolean)});
         setMessage("Settings saved.");
       } catch (error) {setMessage((error as Error).message);}
       finally {setBusy(false);}
@@ -217,8 +225,20 @@ export function SettingsPanel({profile, save, tab, setTab, codexStatus}: {codexS
         <label className="checkbox"><input type="checkbox" checked={rule.alerts} onChange={e => update(index, {alerts: e.target.checked})} /> In-app alerts</label>
         <button type="button" onClick={() => setValue({...value, searches: value.searches.filter((_, i) => i !== index)})}>Remove search</button>
       </fieldset>)}
+      <fieldset><legend>Shortlist scoring</legend><div className="fields">
+        {(Object.keys(scoreLabels) as (keyof ScoringWeights)[]).map(key => <label key={key}>{scoreLabels[key]}
+          <input type="number" min={0} max={100} required value={value.scoring?.[key] ?? defaultWeights[key]}
+            onChange={event => setValue({...value, scoring: {...(value.scoring ?? defaultWeights), [key]: Number(event.target.value)}})} />
+        </label>)}
+      </div></fieldset>
 
-      </>:<><h2>Application materials</h2>
+      </>:<><h2>Skills and experience</h2>
+      <label>Skills<textarea rows={3} value={skills} onChange={e => setSkills(e.target.value)}
+        placeholder="SolidWorks, FEA, GD&T" aria-describedby="skills-help" /></label>
+      <p className="muted" id="skills-help">Separate skills with commas or new lines. Change the points under Discovery → Shortlist scoring.</p>
+      <label>Verified experience and eligibility profile<textarea rows={7} value={value.experience}
+        onChange={e => setValue({...value, experience: e.target.value})} /></label>
+      <h2>Application materials</h2>
       <label>GitHub résumé repository<input placeholder="owner/repository" value={value.resume_repo}
         onChange={e => setValue({...value, resume_repo: e.target.value})} /></label>
       <div className="fields"><label>Branch<input value={value.resume_branch} onChange={e => setValue({...value, resume_branch: e.target.value})} /></label>
@@ -226,8 +246,18 @@ export function SettingsPanel({profile, save, tab, setTab, codexStatus}: {codexS
       <label>GitHub cover-letter repository<input placeholder="danielrbenjamin/cover-letter" value={value.cover_repo||""} onChange={e=>setValue({...value,cover_repo:e.target.value})}/></label>
       <div className="fields"><label>Cover-letter branch<input value={value.cover_branch||"main"} onChange={e=>setValue({...value,cover_branch:e.target.value})}/></label>
       <label>Cover-letter entry<input value={value.cover_entry||"cover-letter.tex"} onChange={e=>setValue({...value,cover_entry:e.target.value})}/></label></div>
-      <label>Verified experience and eligibility profile<textarea rows={7} value={value.experience}
-        onChange={e => setValue({...value, experience: e.target.value})} /></label>
+      <h2>Referrals</h2>
+      <div className="fields">
+        <label>Preferred school and aliases<input maxLength={120} value={value.referral_school ?? ""}
+          onChange={e => setValue({...value, referral_school: e.target.value})} placeholder="University of British Columbia, UBC" /></label>
+        <label>Preferred experience<input maxLength={240} value={value.referral_experience ?? ""}
+          onChange={e => setValue({...value, referral_experience: e.target.value})} placeholder="Prototype testing, hiring, team leadership" /></label>
+        <label>Prioritize<select value={value.referral_priority ?? "team"}
+          onChange={e => setValue({...value, referral_priority: e.target.value as Profile["referral_priority"]})}>
+          <option value="team">Team or role matches</option><option value="school">Preferred school matches</option>
+          <option value="experience">Preferred experience matches</option>
+        </select></label>
+      </div>
       </>}<div className="actions settings-actions">
         {tab==="Discovery" && <button type="button" onClick={() => setValue({...value, searches: [...value.searches, {...blank}]})}>Add saved search</button>}
         <button className="primary" disabled={busy}>Save settings</button>
