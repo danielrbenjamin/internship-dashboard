@@ -89,9 +89,18 @@ def company_key(name):
 
 def import_jobs(db, source, jobs, owner="", complete=True, stale_days=7):
     timestamp = now()
+    today = datetime.fromisoformat(timestamp).date()
+    earliest = (today - timedelta(days=29)).isoformat()
+    latest = today.isoformat()
     options = db.settings(owner) if owner else {}
     watchlist = {company_key(name) for name in options.get("watchlist", [])}
     searches = [item for item in options.get("searches", []) if item["alerts"]]
+
+    def alert(conn, key, posting):
+        if company_key(posting["company"]) in watchlist or any(matches(posting, rule) for rule in searches):
+            conn.execute("INSERT OR IGNORE INTO alerts(owner,job_id,created_at) VALUES (?,?,?)",
+                         (owner, key, timestamp))
+
     seen = set()
     with db.connect() as conn:
         conn.execute("BEGIN IMMEDIATE")
@@ -104,7 +113,7 @@ def import_jobs(db, source, jobs, owner="", complete=True, stale_days=7):
             identity = f"{company}:{requisition.casefold()}" if requisition else url
             key = hashlib.sha256(identity.encode()).hexdigest()[:24]
             posted = posting_date(job.get("posted_on"))
-            duplicate = conn.execute("""SELECT j.id,j.source,j.fingerprint,j.description,j.posted_on,s.enabled FROM jobs j
+            duplicate = conn.execute("""SELECT j.*,s.enabled FROM jobs j
                                         LEFT JOIN sources s ON j.source=s.id
                                         WHERE j.id=? OR j.url=? OR (j.company=? AND j.requisition=?)
                                         ORDER BY (j.company=? AND j.requisition=?) DESC,j.id=? DESC LIMIT 1""",
@@ -116,6 +125,9 @@ def import_jobs(db, source, jobs, owner="", complete=True, stale_days=7):
             if key in seen:
                 continue
             seen.add(key)
+            can_alert = owner and posted and earliest <= posted <= latest and (
+                not duplicate or not duplicate["posted_on"]
+            )
             conn.execute("""INSERT INTO job_sources VALUES (?,?,?,1)
                             ON CONFLICT(job_id,source) DO UPDATE SET last_seen=excluded.last_seen,active=1""",
                          (key, source, timestamp))
@@ -125,6 +137,8 @@ def import_jobs(db, source, jobs, owner="", complete=True, stale_days=7):
                                                   or (not duplicate["description"] and job["description"]))
                 if not prefer_new:
                     conn.execute("UPDATE jobs SET last_seen=?,posted_on=?,active=1 WHERE id=?", (timestamp, posted, key))
+                    if can_alert:
+                        alert(conn, key, dict(duplicate))
                     continue
             payload = {k: job[k] for k in ("company", "title", "location", "description")}
             if duplicate and not payload["description"] and job.get("detail_unavailable"):
@@ -152,9 +166,8 @@ def import_jobs(db, source, jobs, owner="", complete=True, stale_days=7):
             if not duplicate or duplicate["fingerprint"] != fingerprint:
                 conn.execute("INSERT INTO job_changes(job_id,fingerprint,seen_at) VALUES (?,?,?)",
                              (key, fingerprint, timestamp))
-            if owner and not duplicate and (company in watchlist or any(matches(payload, rule) for rule in searches)):
-                conn.execute("INSERT OR IGNORE INTO alerts(owner,job_id,created_at) VALUES (?,?,?)",
-                             (owner, key, timestamp))
+            if can_alert:
+                alert(conn, key, payload)
         cutoff = timestamp if complete else (datetime.fromisoformat(timestamp) - timedelta(days=stale_days)).isoformat()
         conn.execute("UPDATE job_sources SET active=0 WHERE source=? AND active=1 AND last_seen<?", (source, cutoff))
         conn.execute("""UPDATE jobs SET active=0 WHERE active=1

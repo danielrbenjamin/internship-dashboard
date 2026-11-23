@@ -63,6 +63,30 @@ def test_catalog_posting_window_and_overlapping_disciplines(app):
     assert client.get("/api/analytics").json()["totals"]["openings"] == 2
 
 
+def test_job_recency_uses_posting_dates_for_overview_ranking_and_alerts(app):
+    owner = TestClient(app)
+    signed_session(app, owner, "google|owner")
+    today = datetime.now(UTC).date()
+    db = app.state.db
+    owner.put("/api/owner/settings", headers=ORIGIN, json={
+        "searches": [{"name": "Mechanical", "keywords": "mechanical", "alerts": True}],
+    }).raise_for_status()
+    ages = {"first": 1, "next": 3, "late": 10, "stale": 40, "future": -1, "unknown": None}
+    for key, days in ages.items():
+        import_jobs(db, "fixture", [{**POSTING, "requisition": key, "url": f"https://example.com/{key}",
+            "posted_on": today - timedelta(days=days) if days is not None else None}], "google|owner", complete=False)
+    db.execute("UPDATE jobs SET first_seen=? WHERE requisition='first'", ((today - timedelta(days=60)).isoformat(),))
+    db.execute("UPDATE alerts SET created_at=? WHERE job_id=(SELECT id FROM jobs WHERE requisition='late')",
+               ((today + timedelta(days=1)).isoformat(),))
+    expected_dates = [(today - timedelta(days=days)).isoformat() for days in (1, 3, 10)]
+    assert [job["posted_on"] for job in owner.get("/api/jobs").json()["jobs"]] == expected_dates
+    assert [job["posted_on"] for job in owner.get("/api/owner/screening").json()["roles"]] == expected_dates
+    assert [job["posted_on"] for job in owner.get("/api/owner/alerts").json()] == expected_dates
+    overview = owner.get("/api/analytics").json()
+    assert overview["totals"]["week"] == 2
+    assert {day["date"]: day["count"] for day in overview["added"]} == dict.fromkeys(expected_dates, 1)
+
+
 def test_owner_boundary_and_revocation(app):
     db = app.state.db
     import_jobs(db, "fixture", [POSTING])

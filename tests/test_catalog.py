@@ -59,6 +59,21 @@ class CatalogTest(unittest.TestCase):
         import_jobs(self.db, "official", [], "owner")
         self.assertEqual(self.db.one("SELECT SUM(active) AS open FROM jobs")["open"], 0)
 
+    def test_alert_requires_a_recent_posting_date_and_can_be_created_when_it_is_found(self):
+        today = datetime.now(UTC).date()
+        import_jobs(self.db, "official", [
+            {**POSTING, "posted_on": None},
+            {**POSTING, "posted_on": today - timedelta(days=30), "requisition": "old",
+             "url": "https://example.com/jobs/old"},
+            {**POSTING, "posted_on": today + timedelta(days=1), "requisition": "future",
+             "url": "https://example.com/jobs/future"},
+        ], "owner")
+        self.assertEqual(self.db.all("SELECT * FROM alerts"), [])
+        for _ in range(2):
+            import_jobs(self.db, "boards:list", [{**POSTING, "posted_on": today - timedelta(days=29)}], "owner")
+        self.assertEqual(self.db.all("SELECT requisition FROM alerts JOIN jobs ON jobs.id=alerts.job_id"),
+                         [{"requisition": POSTING["requisition"]}])
+
     def test_safe_public_links(self):
         self.assertIsNone(canonical_url("javascript:alert(1)"))
         self.assertIsNone(canonical_url("https://example.com@external.example/"))

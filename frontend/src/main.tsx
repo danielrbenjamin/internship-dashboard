@@ -331,8 +331,7 @@ function App() {
     {detail?.id === selected ? <>
       <p className="eyebrow">{detail.company}</p><h2>{detail.title}</h2>
       <p className="muted">{detail.location || "Location unspecified"}</p>
-      <dl className="job-facts">{detail.posted_on && <div><dt>Posted</dt><dd>{formatDate(detail.posted_on + "T12:00:00")}</dd></div>}<div><dt>First seen</dt><dd>{formatDate(detail.first_seen)}</dd></div>
-        <div><dt>Last seen</dt><dd>{formatDate(detail.last_seen)}</dd></div>
+      <dl className="job-facts"><div><dt>Posted</dt><dd>{detail.posted_on ? formatDate(detail.posted_on + "T12:00:00") : "Unknown"}</dd></div>
         <div><dt>Source</dt><dd>{sourceLabel(detail.source)}</dd></div>
         {detail.term && <div><dt>Term</dt><dd>{detail.term}</dd></div>}</dl>
       {!!detail.matched_skills?.length && <p className="muted">Matched skills · {detail.matched_skills.join(", ")}</p>}
@@ -379,7 +378,7 @@ function App() {
             editSkills={()=>navigate("Settings",{tab:"Profile"})} open={job=>goTo({view:"Screening",job},{screeningPosting:true})}
             selected={selected} posting={postingContent} close={closeScreeningPosting} tracked={Boolean(currentApplication)}
             canReview={Boolean(detail?.id === selected && (detail.description || currentApplication))} onQueued={refresh}/> :
-        view === "Replies" ? <Replies notifications={deadlineNotifications} focus={focusItem} apps={applications} connect={()=>navigate("Settings",{tab:"Email inboxes"})}/> : view === "Overview" ? <Overview openPriority={openPriority} name={session?.account?.name} tasks={owner?[{label:"Ready to submit",value:applications.filter(a=>a.status==="ready").length,open:()=>{navigate("Saved");setStatusFilter("ready")}},{label:"Deadlines",value:reminders.length,open:()=>navigate("Replies")},{label:"New matches",value:unread,open:()=>navigate("Alerts")}]:[]} owner={Boolean(owner)} sourceName={sourceLabel}
+        view === "Replies" ? <Replies notifications={deadlineNotifications} focus={focusItem} apps={applications} connect={()=>navigate("Settings",{tab:"Email inboxes"})}/> : view === "Overview" ? <Overview openPriority={openPriority} name={session?.account?.name} tasks={owner?[{label:"Ready to submit",value:applications.filter(a=>a.status==="ready").length,open:()=>{navigate("Saved");setStatusFilter("ready")}},{label:"Deadlines",value:reminders.length,open:()=>navigate("Replies")},{label:"Unread matches",value:unread,open:()=>navigate("Alerts")}]:[]} owner={Boolean(owner)} sourceName={sourceLabel}
           openCatalog={() => navigate("Browse")}
           openSource={openSource} /> :
         view === "Materials" ? <section className="materials-page"><PageHeader title="Application materials" />
@@ -399,8 +398,8 @@ function App() {
           <PageHeader title="Alerts">{!!unread && <button onClick={() => api("/api/owner/alerts/read", "POST").then(refresh).catch(showError)}>Mark all read</button>}</PageHeader>
           {alerts.length ? <ul className="sources">{alerts.map(item => <li key={item.job_id}>
             <button onClick={() => navigate("Browse",{job:item.job_id})}>{item.title} · {item.company}</button>
-            <span>{!item.read && "New · "}{formatDate(item.created_at)}</span></li>)}</ul>
-          : <p className="muted">New matches from your watchlist and saved searches appear here.</p>}
+            <span>{!item.read && "Unread · "}{item.posted_on && <time dateTime={item.posted_on}>Posted {formatDate(item.posted_on + "T12:00:00")}</time>}</span></li>)}</ul>
+          : <p className="muted">Matches from your watchlist and saved searches appear here.</p>}
         </section> : <>
           <PageHeader title={view === "Browse" ? "All openings" : view === "Saved" ? "Saved roles" : "Applied"} className="catalog-title">
             {view === "Browse" && configured.length > 0 && <button className="coverage-link" onClick={() => navigate("Sources")}>

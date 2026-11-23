@@ -28,7 +28,7 @@ export type Task = {id: string; status: string; result: string; fit_review?: num
 export type Details = {
   posting: Job; documents: Document[]; cover_letters: CoverLetter[]; ai: Task[]; history: {event: string; at: string}[];
 };
-export type Alert = {job_id: string; title: string; company: string; created_at: string; read: number};
+export type Alert = {job_id: string; title: string; company: string; posted_on: string; read: number};
 export type Source = {id: string; count: number; error: string | null; last_success: string | null};
 export type CatalogSource = {
   id: string; label: string; count: number; recent_count: number; stale: boolean; last_success: string | null;

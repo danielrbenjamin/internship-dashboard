@@ -53,7 +53,7 @@ export function useOverviewStats(owner: boolean) {
 export function CatalogMetrics({totals}: {totals: OverviewStats["totals"]}) {
   return <div className="metrics">
     {[[totals.openings, "Active openings"], [totals.employers, "Employers"],
-      [totals.week, "Active roles added in last 7 days"]].map(([value, label]) =>
+      [totals.week, "Active roles posted in last 7 days"]].map(([value, label]) =>
       <div key={label}><span>{label}</span><strong>{number(Number(value))}</strong></div>)}
   </div>;
 }
@@ -68,7 +68,7 @@ export function DiscoveryPanels({stats, owner, sourceName, openSource}: {
   });
   const pipeline = new Map(stats.pipeline?.map(row => [row.status, row.count]));
   return <div className="analytics-grid">
-        <Activity days={days} series={stats.added} title="Newly discovered roles" />
+        <Activity days={days} series={stats.added} title="Roles by posting date" />
         <section className="analytics-panel"><div className="panel-heading"><h2>Top sources by openings</h2></div>
           <ul className="source-chart">
             {stats.sources.slice(0,10).map(source => <li key={source.source}>

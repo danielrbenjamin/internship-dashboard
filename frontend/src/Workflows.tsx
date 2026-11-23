@@ -2,14 +2,14 @@ import {AIBadge, CodexHint} from "./CodexConnection";
 import {BriefcaseBusiness} from "lucide-react";
 import {PageHeader} from "./PageHeader";
 import {useCallback, useEffect, useLayoutEffect, useRef, useState, type ReactNode} from "react";
-import {api, type Application} from "./api";
+import {api, formatDate, type Application} from "./api";
 
 type Prefs = {auto_shortlist:boolean; draft:boolean; threshold:number;smart:boolean;prepare:boolean;max_experience_years:number;reject_no_sponsorship:boolean;exclude_export_control:boolean;minimum_annual_pay:number};
 type FitReview = {id:string; title:string; company:string; status:string; message:string; matched_skills?:string[];
   report?: {verdict:"apply"|"review"|"skip"; match_score?:number|null; recruiter_read?:string; engineering_fit?:string;
     assessment?: {field:string; classification:string; requirement:string; quote:string}[]; interview_questions?:string[];
     preparation_error?:string} | null;};
-type Screen = {reviews:FitReview[];preferences:Prefs; roles:{id:string;title:string;company:string;location:string;score:number;reasons:string[];matched_skills?:string[]}[]};
+type Screen = {reviews:FitReview[];preferences:Prefs; roles:{id:string;title:string;company:string;location:string;posted_on:string;score:number;reasons:string[];matched_skills?:string[]}[]};
 const reviewStatuses: Record<string, string> = {queued:"Queued", running:"Reviewing", limited:"Paused", failed:"Failed"};
 const verdicts = {apply:"Apply", review:"Apply with risk", skip:"Skip"};
 
@@ -150,7 +150,8 @@ export function Screening({open, settings, editSkills, codexReady, connectCodex,
         </div>}
         {data.roles.map(role => <button key={role.id} className="job" onClick={() => open(role.id)}>
           <BriefcaseBusiness className="job-icon" size={17} aria-hidden="true" />
-          <span className="job-copy"><strong>{role.title}</strong><span>{[role.company, role.location, ...role.reasons].filter(Boolean).join(" · ")}</span>
+          <span className="job-copy"><strong>{role.title}</strong><span>{[role.company, role.location,
+            role.posted_on ? "Posted " + formatDate(role.posted_on + "T12:00:00") : "", ...role.reasons].filter(Boolean).join(" · ")}</span>
             {!!role.matched_skills?.length && <span>Matched skills · {role.matched_skills.join(", ")}</span>}</span>
           <span className="row-meta">{role.score}/100</span>
         </button>)}

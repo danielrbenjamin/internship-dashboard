@@ -139,15 +139,19 @@ def create_app(settings=None):
     def analytics(request: Request, offset_minutes: int = Query(0, ge=-840, le=840)):
         offset = timedelta(minutes=offset_minutes)
         local_now = datetime.now(UTC) + offset
+        local_day = local_now.date()
         midnight = local_now.replace(hour=0, minute=0, second=0, microsecond=0) - offset
         since = (midnight - timedelta(days=13)).isoformat()
         sqlite_offset = f"{offset_minutes:+d} minutes"
         totals = db.one("""SELECT count(*) AS openings,count(DISTINCT company) AS employers,
-                          count(CASE WHEN first_seen>=? THEN 1 END) AS week
-                          FROM jobs WHERE active=1 AND """ + RECENT, ((midnight - timedelta(days=6)).isoformat(),))
-        added = db.all("""SELECT date(first_seen,?) AS date,count(*) AS count
-                        FROM jobs WHERE source<>'private:capture' AND first_seen>=? GROUP BY date""", (sqlite_offset, since))
-        by_source = db.all("""SELECT source,count(*) AS count FROM jobs WHERE active=1 AND """ + RECENT + """
+                          count(CASE WHEN posted_on BETWEEN ? AND ? THEN 1 END) AS week
+                          FROM jobs WHERE active=1 AND source<>'private:capture' AND """ + RECENT,
+                        ((local_day - timedelta(days=6)).isoformat(), local_day.isoformat()))
+        added = db.all("""SELECT posted_on AS date,count(*) AS count FROM jobs
+                        WHERE source<>'private:capture' AND posted_on BETWEEN ? AND ? GROUP BY posted_on""",
+                       ((local_day - timedelta(days=13)).isoformat(), local_day.isoformat()))
+        by_source = db.all("""SELECT source,count(*) AS count FROM jobs WHERE active=1 AND source<>'private:capture' AND """
+                            + RECENT + """
                             GROUP BY source ORDER BY count DESC,source""")
         result = {"totals": totals, "added": added, "sources": by_source}
         owner = current_owner(request)
@@ -249,8 +253,9 @@ def create_app(settings=None):
 
     @app.get("/api/owner/alerts")
     def alerts(owner: Owner):
-        return db.all("""SELECT alerts.job_id,created_at,read,jobs.title,jobs.company FROM alerts
-                      JOIN jobs ON jobs.id=alerts.job_id WHERE owner=? AND jobs.active=1 AND """ + RECENT + """ ORDER BY created_at DESC LIMIT 100""", (owner,))
+        return db.all("""SELECT alerts.job_id,created_at,read,jobs.title,jobs.company,jobs.posted_on FROM alerts
+                      JOIN jobs ON jobs.id=alerts.job_id WHERE owner=? AND jobs.active=1 AND """ + RECENT +
+                      " ORDER BY jobs.posted_on DESC,jobs.id LIMIT 100", (owner,))
 
     @app.post("/api/owner/alerts/read")
     def read_alerts(owner: Owner):

@@ -46,7 +46,7 @@ const applications: Application[] = jobs.flatMap((job, index) => roles[index].st
   location: job.location, status: roles[index].stage, notes: index === 0 ? "Review the final PDFs before applying." : "", deadline: "",
 }] : []);
 const alerts: Alert[] = [jobs[7], jobs[8], jobs[9]].map(job => ({
-  job_id: job.id, title: job.title, company: job.company, created_at: job.first_seen, read: 0,
+  job_id: job.id, title: job.title, company: job.company, posted_on: job.posted_on!, read: 0,
 }));
 let profile: Profile = {
   watchlist: ["Harbour Robotics", "Clearwater Instruments"],
