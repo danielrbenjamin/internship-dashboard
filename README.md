@@ -3,6 +3,9 @@
 
 A public internship catalog with a private workspace for tracking applications, reviewing résumé edits, and keeping a copy of what was submitted. The React frontend and FastAPI API share an origin. A Python worker polls job sources and processes owner-requested Codex work. SQLite and the document archive persist across restarts.
 
+<img width="1894" height="969" alt="image" src="https://github.com/user-attachments/assets/a49e8a1e-3fa7-448a-93a9-26aee04dbff2" />
+
+
 ## Windows development
 
 Install Python 3.12, Node 24, and a working TeX distribution with `pdflatex` and `synctex` on PATH. From the repository root in PowerShell:
