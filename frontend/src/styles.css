@@ -479,9 +479,28 @@ fieldset { margin: 0 0 .55rem; border: 1px solid var(--line); border-radius: .4r
 .contact-row>div,.studio-toolbar>span{margin-right:auto}.contact-row p,.studio-toolbar span{font-size:.8rem;color:var(--muted);margin-bottom:0}
 .studio{overflow:hidden}.studio-grid{display:grid;grid-template-columns:minmax(7.5rem,.45fr) minmax(0,1.65fr) minmax(0,1fr);min-height:32rem}
 .studio .filetree,.studio .editor-pane{min-width:0;border-right:1px solid var(--line)}
-.filetree{padding:.55rem;background:var(--surface);overflow:auto}.workspace .filetree h3{margin:.2rem 0 .75rem}.filetree button{display:block;max-width:none;width:100%;text-align:left;padding:.12rem .3rem;min-height:1.6rem;border:0;background:transparent;font: .75rem var(--mono);overflow-wrap:anywhere}.filetree button[aria-current]{background:var(--selected)}
-.filetree summary{font-size:.8rem}.subtree{margin-left:.35rem;padding-left:.35rem;border-left:1px solid var(--line)}
-.pane-title{background:var(--surface);padding:.5rem .7rem;border-bottom:1px solid var(--line);overflow-wrap:anywhere}
+.filetree{background:var(--surface)}
+.filetree-content{min-height:0;overflow:auto;padding:.35rem .42rem}
+.filetree-content button,.filetree summary{
+  display:flex;align-items:center;min-width:0;width:100%;min-height:1.65rem;gap:.3rem;padding:.12rem .3rem;
+  border:0;border-radius:.25rem;background:transparent;text-align:left;font:.75rem var(--mono);
+}
+.filetree summary{list-style:none}
+.filetree summary::-webkit-details-marker{display:none}
+.filetree summary svg{flex:none}
+.filetree details[open] > summary svg{transform:rotate(90deg)}
+.filetree :is(summary,.filetree-file) > span,.pane-title :is(.pane-title-text,.pane-title-context){
+  min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;
+}
+.filetree-content :is(button:not(:disabled),summary):hover{background:var(--paper)}
+.filetree button[aria-current]{background:var(--selected)}
+.subtree{margin-inline-start:.45rem;padding-inline-start:.36rem;border-inline-start:1px solid var(--line)}
+.studio .pane-title{
+  display:flex;align-items:center;gap:.45rem;min-width:0;height:2.55rem;margin:0;padding:.25rem .65rem;
+  background:var(--surface);border-bottom:1px solid var(--line);
+}
+.pane-title-text{flex:1}
+.pane-title-context{max-inline-size:45%;font-weight:400}
 .codepane{width:100%;height:clamp(25rem,56vh,52rem)}.codepane textarea{min-height:0;padding:0;resize:none;border:0}
 .preview-pane iframe{width:100%;height:calc(100% - 2.25rem);min-height:28rem;border:0}.preview-pane>p,.editor-review{padding:.7rem}
 .studio-toolbar{flex-wrap:wrap}.editor-review>div{margin-top:.35rem}
@@ -657,7 +676,7 @@ nav .nav-group h2 { letter-spacing: .025em; }
   margin-bottom: .8rem;
 }
 .materials-page .document-toolbar .actions { margin: 0; }
-.screening-settings {
+.screening-settings, .screening-posting {
   width: min(36rem, calc(100vw - 2rem));
   max-height: calc(100dvh - 2rem);
   padding: clamp(1rem, 3vw, 1.5rem);
@@ -666,7 +685,11 @@ nav .nav-group h2 { letter-spacing: .025em; }
   background: var(--paper);
   color: var(--ink);
 }
-.screening-settings::backdrop { background: #11182770; }
+.screening-settings::backdrop, .screening-posting::backdrop { background: #11182770; }
+.screening-posting { width: min(58rem, calc(100vw - 2rem)); padding: 0; overscroll-behavior: contain; }
+.fit-review { border-bottom: 1px solid var(--line); }
+.fit-review .panel-heading { align-items: center; flex-wrap: wrap; border: 0; padding: 0; }
+.fit-review .panel-heading h3 { margin: 0; }
 .screening-settings h2 { margin-bottom: 1rem; }
 .screening-settings fieldset { min-width: 0; margin: 0 0 .85rem; padding: .65rem .8rem; border: 1px solid var(--line); border-radius: var(--radius); }
 .screening-settings legend { padding-inline: .2rem; font-weight: 650; }
@@ -806,16 +829,28 @@ nav .nav-group h2 { letter-spacing: .025em; }
   height: clamp(32rem, 68vh, 53rem);
 }
 .studio-expanded .studio-grid { flex: 1; height: auto; }
-.studio .filetree { flex: 0 0 var(--files-width); border: 0; max-height: none; }
+.studio .filetree { display: flex; flex: 0 0 var(--files-width); flex-direction: column; border: 0; max-height: none; }
 .studio .editor-pane { display: flex; flex: 1 1 0; flex-direction: column; border: 0; }
 .studio .preview-pane { display: flex; flex: 0 0 var(--pdf-width); flex-direction: column; min-width: 0; }
 .studio :is(.pane-title, .editor-review) { flex-shrink: 0; }
-.studio .codepane, .latex-pdf-scroll { flex: 1 1 0; min-height: 0; }
-.preview-heading, .latex-pdf-controls { display: flex; align-items: center; flex-wrap: wrap; gap: .35rem; }
-.preview-heading { justify-content: space-between; }
+.studio .codepane, .latex-pdf-view, .latex-pdf-scroll { flex: 1 1 0; min-height: 0; }
+.preview-heading button { flex: none; white-space: nowrap; }
 .preview-heading button, .latex-pdf-controls :is(button,.button) { min-height: 1.7rem; padding: .2rem .4rem; }
-.latex-pdf-controls { padding: .3rem .5rem; border-bottom: 1px solid var(--line); }
-.latex-pdf-controls > .button { margin-inline-start: auto; }
+.latex-pdf-view { position: relative; display: flex; flex-direction: column; min-width: 0; }
+.latex-pdf-controls {
+  position: absolute; z-index: 2; inset-block-start: .4rem; inset-inline-start: 50%; transform: translateX(-50%);
+  display: flex; align-items: center; justify-content: center; flex-wrap: wrap; gap: .25rem;
+  inline-size: max-content; max-inline-size: calc(100% - .8rem); padding: .25rem; border: 1px solid var(--line);
+  border-radius: var(--radius); background: var(--paper); box-shadow: 0 .15rem .5rem #0002;
+  opacity: 0; pointer-events: none;
+}
+.preview-pane:is(:hover,:focus-within) .latex-pdf-controls { opacity: 1; pointer-events: auto; }
+@media (hover: none), (pointer: coarse) {
+  .latex-pdf-controls {
+    position: static; transform: none; align-self: center; margin-block: .3rem;
+    opacity: 1; pointer-events: auto;
+  }
+}
 .latex-pdf-scroll { overflow: auto; padding: 12px; background: var(--surface); }
 .latex-pdf-page { position: relative; margin: 0 auto .7rem; background: white; color: #222; box-shadow: 0 0 0 1px var(--line); }
 .latex-pdf-page:last-child { margin-bottom: 0; }
@@ -847,7 +882,7 @@ nav .nav-group h2 { letter-spacing: .025em; }
   .studio .editor-pane { flex: none; min-height: 24rem; }
   .studio .preview-pane { flex: none; min-height: 26rem; }
   .studio .codepane { height: clamp(20rem, 44dvh, 35rem); flex: none; }
-  .studio .latex-pdf-scroll { flex: none; height: 50dvh; }
+  .studio .latex-pdf-view { flex: none; height: 50dvh; }
 }
 
 @media (min-width: 781px) {

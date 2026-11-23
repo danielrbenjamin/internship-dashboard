@@ -3,13 +3,14 @@ import type {OverviewStats} from "./Overview";
 import {ApiError, type Alert, type Application, type CatalogSource, type Details, type Document, type Job, type Profile} from "./api";
 
 const sources: Record<string, string> = {employers: "Employer boards", indeed: "Indeed", lists: "Internship collections"};
+const exportRequirement = "Applicants must be U.S. Persons under ITAR.";
 const roles = [
   {title: "Mechanical Design Co-op", company: "Harbour Robotics", location: "Vancouver, BC", stage: "ready",
     source: "employers", description: "Design fixtures and test assemblies for a new generation of warehouse robots. Work with the mechanical team on CAD, drawings, and prototype validation."},
   {title: "Hardware Test Intern", company: "Clearwater Instruments", location: "Burnaby, BC", stage: "interview",
     source: "indeed", description: "Build bench tests for sensor boards, automate measurements, and investigate failures with the electrical team."},
   {title: "Manufacturing Engineering Intern", company: "Northline Motion", location: "Seattle, WA", stage: "applied",
-    source: "lists", description: "Improve tooling and document the assembly process for compact electromechanical products."},
+    source: "lists", description: "Improve tooling and document the assembly process for compact electromechanical products. " + exportRequirement},
   {title: "Robotics Software Intern", company: "Harbour Robotics", location: "Vancouver, BC", stage: "shortlisted",
     source: "employers", description: "Develop and test motion software for a mobile robot fleet. Use Python and C++ to analyze test runs."},
   {title: "Product Design Intern", company: "Northline Motion", location: "Seattle, WA", stage: "offer",
@@ -39,6 +40,7 @@ const jobs: Job[] = roles.map((role, index) => {
     description: "## About the role\n\n" + role.description +
       "\n\n## Qualifications\n\n- Currently enrolled in a relevant degree program\n- Available for a four-month summer term\n- Comfortable working on a cross-functional team"};
 });
+const fitReviews = new Map<string, number>([[jobs[0].id, 0]]);
 const applications: Application[] = jobs.flatMap((job, index) => roles[index].stage ? [{
   id: "sample-application-" + (index + 1), job_id: job.id, title: job.title, company: job.company,
   location: job.location, status: roles[index].stage, notes: index === 0 ? "Review the final PDFs before applying." : "", deadline: "",
@@ -57,7 +59,7 @@ let profile: Profile = {
   resume_repo: "", resume_branch: "main", resume_entry: "main.tex", cover_repo: "", cover_branch: "main", cover_entry: "main.tex",
 };
 let preferences = {auto_shortlist: true, draft: false, threshold: 75, smart: true, prepare: true,
-  max_experience_years: 2, reject_no_sponsorship: false, minimum_annual_pay: 0};
+  max_experience_years: 2, reject_no_sponsorship: false, exclude_export_control: false, minimum_annual_pay: 0};
 let intervalMinutes = 5;
 const due = new Date(Date.now() + 6 * 60 * 60 * 1000).toISOString();
 const reply = {id: 1, subject: "Hardware Test Intern interview invitation", sender: "recruiting@clearwater.example",
@@ -149,6 +151,7 @@ function openings(query: URLSearchParams) {
       job.location.toLowerCase().includes(get("location")) &&
       (!term || job.term?.toLowerCase() === term) && (!source || source === job.source) &&
       (!discipline || discipline.test(job.title)) &&
+      (get("exclude_export_control") !== "true" || !job.description?.includes(exportRequirement)) &&
       (get("watchlist") !== "true" || profile.watchlist.includes(job.company)) &&
       (!saved || (!saved.keywords || saved.keywords.toLowerCase().split(",").some(word => title.includes(word.trim()))) &&
         job.location.toLowerCase().includes(saved.location.toLowerCase()) &&
@@ -207,13 +210,20 @@ export function demoRequest(path: string, method: string, body?: object): unknow
         experience_matches: (profile.referral_experience ?? "").split(",").map(term => term.trim()).filter(term =>
           term && "works in prototype development".includes(term.toLowerCase())),
       }] : []};
-      case "/screening": return {preferences, reviews: [{id: jobs[0].id, title: jobs[0].title, company: jobs[0].company,
-        verdict: "apply", score: 89, summary: "Fixture design and prototype testing match the role.", matched_skills: sampleSkills(jobs[0])}],
+      case "/screening": return {preferences, reviews: [...fitReviews].reverse().flatMap(([id, ready]) => {
+        const job = jobs.find(item => item.id === id);
+        if (!job) return [];
+        const done = Date.now() >= ready;
+        return [{id, title: job.title, company: job.company, status: done ? "done" : "queued", message: "",
+          matched_skills: sampleSkills(job), report: done ? {verdict: "apply", match_score: 89,
+            recruiter_read: "Prototype testing and engineering project experience match the role."} : null}];
+      }),
       roles: jobs.slice(0, 5).map((job, index) => {
         const matched_skills = sampleSkills(job);
         const bonus = Math.min(profile.scoring?.skill_cap ?? 30, (profile.scoring?.skill ?? 10) * matched_skills.length);
         return {...job, score: Math.min(100, 65 - index * 5 + bonus), reasons: ["Matches your engineering interests"], matched_skills};
-      })};
+      }).filter(job => (!preferences.exclude_export_control || !job.description?.includes(exportRequirement))
+        && !fitReviews.has(job.id))};
       case "/background": return {worker: {status: "connected"}, usage: demoData(today).report(today, 7).usage,
         collection: {interval_minutes: intervalMinutes, requested: 0, started: now, finished: now},
         tasks: [{id: "sample-task", status: "done", title: jobs[0].title, company: jobs[0].company, job_id: jobs[0].id}]};
@@ -232,6 +242,16 @@ export function demoRequest(path: string, method: string, body?: object): unknow
     throw new ApiError(404, "Sample data is unavailable for this item.");
   }
   if (method === "POST") {
+    const reviewJob = /^\/jobs\/([^/]+)\/fit-review$/.exec(route)?.[1];
+    const job = jobs.find(item => item.id === reviewJob);
+    if (job) {
+      if (!applications.some(item => item.job_id === job.id)) {
+        applications.push({id: "sample-application-" + job.id, job_id: job.id, title: job.title,
+          company: job.company, location: job.location, status: "shortlisted", notes: "", deadline: ""});
+      }
+      fitReviews.set(job.id, Date.now() + 1500);
+      return {id: "sample-fit-review-" + job.id};
+    }
     if (route === "/auth/logout") return {redirect: "/"};
     if (route === "/alerts/read") {alerts.forEach(alert => {alert.read = 1;}); return {ok: true};}
     if (route === "/background/run") return {queued: true};

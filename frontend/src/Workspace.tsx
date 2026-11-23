@@ -5,14 +5,14 @@ import {lazy, Suspense, useEffect, useState} from "react";
 import {MailSettings} from "./MailSettings";
 import {PostingText} from "./PostingText";
 import {api, assetHref, formatDate, statuses} from "./api";
-import type {Application, Details, Document, Job, Profile, ScoringWeights, Search} from "./api";
+import type {Application, Details, Document, Job, Profile, ScoringWeights, Search, Task} from "./api";
 
 const ProjectEditor=lazy(()=>import("./ProjectEditor"));
 
-type Report = {preparation_error?:string; preparation_started?:boolean; prepared_version?:string; material?:"resume"|"cover"; verdict?:"apply"|"review"|"skip"; match_score?:number; recruiter_read?:string;document_id?: string; source_file?: string; interview_questions?:string[]; engineering_fit?: string; assessment?: {field: string; classification: string; requirement: string; quote: string}[];
+type Report = {screen?:boolean;preparation_error?:string; preparation_started?:boolean; prepared_version?:string; material?:"resume"|"cover"; verdict?:"apply"|"review"|"skip"; match_score?:number; recruiter_read?:string;document_id?: string; source_file?: string; interview_questions?:string[]; engineering_fit?: string; assessment?: {field: string; classification: string; requirement: string; quote: string}[];
   edits?: {before: string; after: string}[]; cover_letter?: string};
 
-export function Workspace({job, application, reload, codexReady, connectCodex}: {codexReady: boolean; connectCodex: () => void; job: Job; application?: Application; reload: () => Promise<void>}) {
+export function Workspace({job, application, reload, codexReady, connectCodex, openFitReview}: {codexReady: boolean; connectCodex: () => void; job: Job; application?: Application; reload: () => Promise<void>; openFitReview: () => void}) {
   const [details, setDetails] = useState<Details>();
   const [status, setStatus] = useState(application?.status || "shortlisted");
   const [notes, setNotes] = useState(application?.notes || "");
@@ -69,6 +69,7 @@ export function Workspace({job, application, reload, codexReady, connectCodex}: 
 
   return <section className="workspace" aria-label="Private application workspace">
     {!!job.matched_skills?.length && <p className="muted">Matched skills · {job.matched_skills.join(", ")}</p>}
+    <div className="actions"><button onClick={openFitReview}>View fit review</button></div>
     <details className="desk-card" open={!application}><summary>Tracking details</summary>
     <form onSubmit={event => {
       event.preventDefault();
@@ -109,7 +110,6 @@ export function Workspace({job, application, reload, codexReady, connectCodex}: 
           setSelected(result.id);
         }, "GitHub snapshot imported.")}>Import latest from GitHub</button>
         <button disabled={busy} onClick={()=>action(async()=>{const r=await api<{id:string}>(route+"/from-template/"+material,"POST");setSelected(r.id);},"Copied base template.")}>Use my saved template</button>
-        {!doc && <button disabled={!codexReady||busy||pending||!details?.posting.description} onClick={()=>action(()=>api(route+"/ai","POST"),"Review queued.")}>Assess eligibility <AIBadge /></button>}
       </div>
       </div>
       {!codexReady && <CodexHint connect={connectCodex} />}
@@ -162,13 +162,15 @@ export function Workspace({job, application, reload, codexReady, connectCodex}: 
   </section>;
 }
 
-function TaskResult({task, onLetter}: {task: {status: string; result: string};
+function TaskResult({task, onLetter}: {task: Task;
   onLetter: (content: string) => void}) {
+  if (task.fit_review) return null;
   if (task.status !== "done") return <p className="muted">Codex: {
     ["queued", "running"].includes(task.status) ? task.status : task.result}</p>;
   let report: Report;
   try { report = JSON.parse(task.result); } catch { return <p>Report could not be read.</p>; }
-  if (report.preparation_started) return null;
+  if (report.preparation_started || report.screen ||
+      (report.screen === false && report.document_id === null && report.cover_letter === "" && report.verdict)) return null;
   const material = report.material === "cover" ? "Cover letter" : "Résumé";
   if (report.prepared_version) return <p>{material} PDF passed the one-page and layout checks.</p>;
   if (report.material && report.preparation_error) return <details open><summary>{material} PDF needs review</summary>

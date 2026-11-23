@@ -134,7 +134,7 @@ export function LatexPdf({url, target, onSource}: {
     return () => {current = false; void task?.destroy().catch(() => {});};
   }, [url]);
 
-  return <>
+  return <div className="latex-pdf-view">
     <div className="latex-pdf-controls" role="group" aria-label="PDF preview controls">
       <button type="button" aria-label="Zoom out" title="Zoom out" disabled={zoom <= .5} onClick={() => setZoom(zoom - .25)}><Minus size={15}/></button>
       <button type="button" title="Fit to preview width" onClick={() => setZoom(1)}>{zoom === 1 ? "Fit width" : `${zoom * 100}%`}</button>
@@ -148,5 +148,5 @@ export function LatexPdf({url, target, onSource}: {
           <PdfPage key={index} pdf={pdf} number={index + 1} width={Math.max(40, width - 24) * zoom}
             scroll={scroll} target={target?.page === index + 1 ? target : undefined} onSource={onSource}/>)}
     </div>
-  </>;
+  </div>;
 }

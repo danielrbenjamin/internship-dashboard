@@ -1,6 +1,6 @@
 /// <reference types="vite/client" />
 import {useEffect, useLayoutEffect, useRef, useState, type CSSProperties} from "react";
-import {Crosshair, FolderTree, Maximize2, Minimize2, PanelRight} from "lucide-react";
+import {ChevronRight, Crosshair, FolderTree, Maximize2, Minimize2, PanelRight} from "lucide-react";
 import {AIBadge, CodexHint} from "./CodexConnection";
 import {PaneDivider} from "./PaneDivider";
 import * as monaco from "monaco-editor";
@@ -28,8 +28,15 @@ type SourcePosition = {name: string; line: number; column: number};
 type Proposal={key:string;before:string;after:string};
 function Files({entries,prefix="",select,active}:{entries:Entry[];prefix?:string;select:(p:string)=>void;active:string}){
   const dirs=new Set(entries.filter(e=>e.path.startsWith(prefix)).map(e=>e.path.slice(prefix.length).split("/")).filter(p=>p.length>1).map(p=>p[0]));
-  return <>{[...dirs].sort().map(dir=><details key={dir} open><summary>{dir}</summary><div className="subtree"><Files entries={entries} prefix={prefix+dir+"/"} select={select} active={active}/></div></details>)}
-    {entries.filter(e=>e.path.startsWith(prefix)&&!e.path.slice(prefix.length).includes("/")).map(e=><button key={e.path} type="button" disabled={!e.editable} title={e.path} aria-current={active===e.path?"page":undefined} onClick={()=>select(e.path)}>{e.path.slice(prefix.length)}</button>)}</>;
+  return <>
+    {[...dirs].sort().map(dir => <details key={dir} open>
+      <summary title={dir}><ChevronRight size={13} aria-hidden="true"/><span>{dir}</span></summary>
+      <div className="subtree"><Files entries={entries} prefix={prefix+dir+"/"} select={select} active={active}/></div>
+    </details>)}
+    {entries.filter(e=>e.path.startsWith(prefix)&&!e.path.slice(prefix.length).includes("/")).map(e =>
+      <button className="filetree-file" key={e.path} type="button" disabled={!e.editable} title={e.path}
+        aria-current={active===e.path?"page":undefined} onClick={()=>select(e.path)}><span>{e.path.slice(prefix.length)}</span></button>)}
+  </>;
 }
 
 function Code({text, proposed, busy, jump, onChange, onReady, onCompile, onShowPdf}: {
@@ -265,7 +272,13 @@ export default function ProjectEditor({doc,tasks,onVersion,suggest,codexReady=fa
       try{if(compile){const result=await api<{checks:Checks|null;sync:boolean|null}>("/api/owner/documents/"+id+"/compile","POST");setChecks(result.checks);setLatestSync(result.sync);setCompiled(true);}}
       finally{if(id!==doc.id){draftStorage.setItem("desk.project."+id+".file",name);draftStorage.setItem("desk.project."+id+".skipped",JSON.stringify(ignored));if(expanded)draftStorage.setItem("desk.project."+id+".expanded","1");await onVersion(id);draftStorage.removeItem(storageKey);draftStorage.removeItem(storageKey+".new");}}
       setMessage(compile?"PDF compiled.":"Version saved.");
-    }catch(e){setMessage(String(e));if(id!==doc.id&&compile)window.alert("Source saved. PDF compilation failed: "+String(e));}finally{setBusy(false);}
+    } catch (error) {
+      const detail = error instanceof Error ? error.message : String(error);
+      setMessage(detail);
+      if (id !== doc.id && compile) window.alert("Source saved. " + detail);
+    } finally {
+      setBusy(false);
+    }
   }
   useLayoutEffect(() => {
     const resumeFocus = draftStorage.getItem(storageKey + ".expanded");
@@ -276,6 +289,8 @@ export default function ProjectEditor({doc,tasks,onVersion,suggest,codexReady=fa
   }, [storageKey]);
 
   const proposed=review&&text.includes(review.before)&&text.indexOf(review.before)===text.lastIndexOf(review.before)?text.replace(review.before,()=>review.after):undefined;
+  const comparison = showingPreparedDiff ? "Previous ↔ Prepared PDF source" : review ? "Current ↔ Codex proposal"
+    : compare ? "Saved ↔ Working copy" : "";
   return <section className={expanded ? "studio studio-expanded" : "studio"} ref={studio} aria-label="LaTeX project editor">
     <div className="studio-toolbar">
       <strong>{doc.kind === "cover" ? "Cover letter" : "Résumé"}</strong><span>{dirty ? "Unsaved changes" : "Saved version"}</span>
@@ -293,15 +308,20 @@ export default function ProjectEditor({doc,tasks,onVersion,suggest,codexReady=fa
       </div>
     </div>
     <div className="studio-grid" ref={panes} style={paneStyle}>
-    {layout.files && <><aside className="filetree"><h3>Files</h3><button disabled={busy} onClick={()=>setAdding(!adding)}>+ New file</button>
+    {layout.files && <><aside className="filetree" aria-labelledby="project-files-heading">
+    <h3 className="pane-title" id="project-files-heading">Files</h3>
+    <div className="filetree-content"><button disabled={busy} onClick={()=>setAdding(!adding)}>+ New file</button>
     {adding&&<form onSubmit={e=>{e.preventDefault();const n=String(new FormData(e.currentTarget).get("path")||"").trim();
       if(!n||!n.split("/").every(p=>/^[\w +-][\w .+-]*$/.test(p)&&!p.endsWith("."))||!/[.](tex|sty|cls|bib|txt|md|bst|cfg|def)$/i.test(n)||[...tree.map(f=>f.path),...created].some(p=>p.toLowerCase()===n.toLowerCase())){setMessage("Choose a new relative source filename, such as sections/projects.tex.");return}
       setCreated([...created,n]);setDraft({...draft,[n]:""});setName(n);setAdding(false);
     }}><label>File path<input name="path" required autoFocus/></label><button>Create</button></form>}
-    <Files entries={[...tree,...created.map(path=>({path,editable:true}))]} active={name} select={setName}/></aside>
+    <Files entries={[...tree,...created.map(path=>({path,editable:true}))]} active={name} select={setName}/></div></aside>
     <PaneDivider label="Resize file tree" min={minFiles} max={maxFiles} value={filesWidth} direction={1}
       onResize={width => setLayout(previous => ({...previous, filesWidth: width}))} /></>}
-    <section className="editor-pane"><div className="pane-title">{name} {showingPreparedDiff ? " · Previous ↔ Prepared PDF source" : review?" · Current ↔ Codex proposal":compare?" · Saved ↔ Working copy":""}</div>
+    <section className="editor-pane"><div className="pane-title">
+      <span className="pane-title-text" title={name}>{name}</span>
+      {comparison && <span className="pane-title-context" title={comparison}>{comparison}</span>}
+    </div>
     {source?.name === name ? <Code key={name} text={showingPreparedDiff ? previousSource.content : compare?source.content:text}
       proposed={showingPreparedDiff ? source.content : compare?text:proposed} onChange={change} busy={busy}
       jump={sourceTarget?.name === name ? sourceTarget : undefined} onReady={editor => {code.current = editor;}}
@@ -317,7 +337,9 @@ export default function ProjectEditor({doc,tasks,onVersion,suggest,codexReady=fa
     {layout.pdf && <><PaneDivider label="Resize PDF preview" min={minPdf} max={maxPdf} value={pdfWidth} direction={-1}
       onResize={width => setLayout(previous => ({...previous, pdfWidth: width}))} />
     <aside className="preview-pane"><div className="pane-title preview-heading">
-      <span>PDF preview {dirty&&"· last compiled version"}</span>
+      <span className="pane-title-text" title={dirty ? "PDF preview · last compiled version" : undefined}>
+        PDF preview {dirty&&"· last compiled version"}
+      </span>
       {compiled && !demoMode && <button type="button" disabled={!canSync || !source || compare || !!review || showingPreparedDiff}
         onClick={showInPdf} title={syncAvailable === false || dirty ? "Recompile to update SyncTeX" : "Show in PDF (Ctrl or ⌘ + Alt + J)"}><Crosshair size={15}/>Show in PDF</button>}
     </div>

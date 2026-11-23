@@ -17,7 +17,7 @@ from .auth import require_owner
 from .catalog import RECENT, canonical_url, company_key, matches
 from .db import now
 from .models import Input, ScoringWeights
-from .posting_text import posting_markdown
+from .posting_text import posting_markdown, requires_us_person
 
 Owner = Annotated[str, Depends(require_owner)]
 
@@ -29,6 +29,7 @@ class Preferences(Input):
     prepare: bool = False
     max_experience_years: int = Field(default=0, ge=0, le=20)
     reject_no_sponsorship: bool = False
+    exclude_export_control: bool = False
     minimum_annual_pay: int = Field(default=0, ge=0, le=1_000_000)
     threshold: int = Field(default=75, ge=50, le=100)
 
@@ -59,7 +60,7 @@ def matching_skills(job, skills):
             if re.search(r"(?<![\w+#])" + re.escape(skill) + r"(?![\w+#])", text, re.IGNORECASE)]
 
 
-def ranked(db, owner):
+def ranked(db, owner, *, exclude_export_control=False):
     profile = db.settings(owner)
     terms = profile.get("searches", [])
     watched = {company_key(name) for name in profile.get("watchlist", [])}
@@ -77,6 +78,8 @@ def ranked(db, owner):
         rules = [s for s in terms if matches(job, s)]
         favorite = company_key(job["company"]) in watched
         if not rules and not favorite:
+            continue
+        if exclude_export_control and requires_us_person(job["description"]):
             continue
         score, reasons = (weights.watchlist, ["Watchlisted employer"]) if favorite else (0, [])
         if rules:
@@ -138,7 +141,7 @@ def auto_screen(db, owner):
     if config.smart and not experience:
         return
     created = 0
-    for score, reasons, job, skills in ranked(db, owner):
+    for score, reasons, job, skills in ranked(db, owner, exclude_export_control=config.exclude_export_control):
         if score < config.threshold:
             break
         if config.smart:
@@ -175,10 +178,11 @@ def auto_screen(db, owner):
             for row in conn.execute(
                 "SELECT app_id FROM draft_requests WHERE owner=? LIMIT ?", (owner, max(0, free))
             ).fetchall():
+                task_id = uuid.uuid4().hex
                 conn.execute(
                     "INSERT INTO ai_tasks VALUES (?,?,?,?,?,?)",
                     (
-                        uuid.uuid4().hex,
+                        task_id,
                         owner,
                         row[0],
                         "queued",
@@ -188,6 +192,8 @@ def auto_screen(db, owner):
                         now(),
                     ),
                 )
+                if config.smart:
+                    conn.execute("INSERT INTO fit_review_tasks VALUES(?)", (task_id,))
                 conn.execute("DELETE FROM draft_requests WHERE owner=? AND app_id=?", (owner, row[0]))
 
 
@@ -424,22 +430,30 @@ def install_workflows(app, db, settings):
         return {"interval_minutes": minutes}
 
     @app.get("/api/owner/screening")
-    def screening(owner: Owner):
+    def screening(owner: Owner, job: str = Query("", max_length=100)):
         reviews = db.all("""WITH reports AS (
-                    SELECT application_id,created_at,CASE WHEN json_valid(result) THEN result ELSE '{}' END AS report
-                    FROM ai_tasks WHERE owner=? AND status='done'
-                ) SELECT j.id,j.title,j.company,
-                    json_extract(report,'$.verdict') AS verdict,
-                    json_extract(report,'$.match_score') AS score,
-                    json_extract(report,'$.recruiter_read') AS summary,a.posting
-                FROM reports JOIN applications a ON a.id=application_id JOIN jobs j ON j.id=a.job_id
-                WHERE a.owner=? AND json_extract(report,'$.screen')=1
-                ORDER BY created_at DESC LIMIT 50""", (owner,owner))
+                    SELECT t.id,t.application_id,t.created_at,t.status,t.result,f.task_id IS NOT NULL AS marked,
+                           CASE WHEN json_valid(t.result) THEN t.result ELSE '{}' END AS report
+                    FROM ai_tasks t LEFT JOIN fit_review_tasks f ON f.task_id=t.id WHERE t.owner=?
+                ), latest AS (
+                    SELECT j.id,j.title,j.company,r.status,r.result,r.created_at,a.posting,
+                           row_number() OVER (PARTITION BY j.id ORDER BY r.created_at DESC,r.id) AS newest
+                    FROM reports r JOIN applications a ON a.id=r.application_id JOIN jobs j ON j.id=a.job_id
+                    WHERE a.owner=? AND (marked OR json_extract(report,'$.screen')=1
+                      OR (r.status='done' AND json_extract(report,'$.verdict') IS NOT NULL
+                          AND json_type(report,'$.screen')='false' AND json_type(report,'$.document_id')='null'
+                          AND json_extract(report,'$.cover_letter')=''))
+                ) SELECT id,title,company,status,result,posting FROM latest WHERE newest=1
+                  ORDER BY (id=?) DESC,created_at DESC LIMIT 50""", (owner, owner, job))
         skills = db.settings(owner).get("skills", [])
+        config = prefs(db, owner)
         for review in reviews:
             review["matched_skills"] = matching_skills(json.loads(review.pop("posting")), skills)
+            result = review.pop("result")
+            review["report"] = json.loads(result) if review["status"] == "done" else None
+            review["message"] = result if review["status"] in {"failed", "limited"} else ""
         return {
-            "preferences": prefs(db, owner),
+            "preferences": config,
             "reviews": reviews,
             "roles": [
                 {
@@ -448,7 +462,7 @@ def install_workflows(app, db, settings):
                     "reasons": r,
                     "matched_skills": skills,
                 }
-                for s, r, j, skills in ranked(db, owner)[:100]
+                for s, r, j, skills in ranked(db, owner, exclude_export_control=config.exclude_export_control)[:100]
             ],
         }
 

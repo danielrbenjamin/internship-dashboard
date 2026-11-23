@@ -85,5 +85,6 @@ class Assessment(Input):
 
 class ProjectChanges(Input):
     model_config = ConfigDict(extra="forbid", str_strip_whitespace=False)
-    files: dict[str,str] = Field(min_length=1,max_length=100)
+    # An unchanged copy lets the editor recompile old PDFs without replacing a saved artifact.
+    files: dict[str, str] = Field(max_length=100)
     created: list[str] = Field(default_factory=list,max_length=100)

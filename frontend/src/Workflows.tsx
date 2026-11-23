@@ -1,25 +1,79 @@
 import {AIBadge, CodexHint} from "./CodexConnection";
 import {BriefcaseBusiness} from "lucide-react";
 import {PageHeader} from "./PageHeader";
-import {useEffect, useRef, useState} from "react";
+import {useCallback, useEffect, useLayoutEffect, useRef, useState, type ReactNode} from "react";
 import {api, type Application} from "./api";
 
-type Prefs = {auto_shortlist:boolean; draft:boolean; threshold:number;smart:boolean;prepare:boolean;max_experience_years:number;reject_no_sponsorship:boolean;minimum_annual_pay:number};
-type Screen = {reviews:{id:string;title:string;company:string;verdict:"apply"|"review"|"skip";score:number|null;summary:string;matched_skills?:string[]}[];preferences:Prefs; roles:{id:string;title:string;company:string;location:string;score:number;reasons:string[];matched_skills?:string[]}[]};
-export function Screening({open, settings, editSkills, materials, codexReady, connectCodex}: {codexReady: boolean; connectCodex: () => void; materials:(id:string)=>void;open:(id:string)=>void; settings:()=>void; editSkills:()=>void}) {
+type Prefs = {auto_shortlist:boolean; draft:boolean; threshold:number;smart:boolean;prepare:boolean;max_experience_years:number;reject_no_sponsorship:boolean;exclude_export_control:boolean;minimum_annual_pay:number};
+type FitReview = {id:string; title:string; company:string; status:string; message:string; matched_skills?:string[];
+  report?: {verdict:"apply"|"review"|"skip"; match_score?:number|null; recruiter_read?:string; engineering_fit?:string;
+    assessment?: {field:string; classification:string; requirement:string; quote:string}[]; interview_questions?:string[];
+    preparation_error?:string} | null;};
+type Screen = {reviews:FitReview[];preferences:Prefs; roles:{id:string;title:string;company:string;location:string;score:number;reasons:string[];matched_skills?:string[]}[]};
+const reviewStatuses: Record<string, string> = {queued:"Queued", running:"Reviewing", limited:"Paused", failed:"Failed"};
+const verdicts = {apply:"Apply", review:"Apply with risk", skip:"Skip"};
+
+function reviewLabel(review: FitReview) {
+  const report = review.report;
+  if (!report) return reviewStatuses[review.status] || "Fit review";
+  return [verdicts[report.verdict], report.match_score != null ? report.match_score + "/100" : ""].filter(Boolean).join(" · ");
+}
+
+function ScreeningPosting({children, close}: {children: ReactNode; close: () => void}) {
+  const ref = useRef<HTMLDialogElement>(null);
+  useLayoutEffect(() => {
+    const dialog = ref.current;
+    dialog?.showModal();
+    return () => dialog?.close();
+  }, []);
+  return <dialog ref={ref} className="screening-posting" aria-labelledby="screening-posting-heading" onCancel={event => {
+    event.preventDefault();
+    close();
+  }}>
+    <header className="detail-header">
+      <span id="screening-posting-heading">Posting details</span>
+      <button type="button" onClick={close}>Close</button>
+    </header>
+    {children}
+  </dialog>;
+}
+
+export function Screening({open, settings, editSkills, codexReady, connectCodex, selected, posting, close, tracked, canReview, onQueued}: {
+  codexReady:boolean; connectCodex:()=>void; open:(id:string)=>void; settings:()=>void; editSkills:()=>void;
+  selected:string; posting:ReactNode; close:()=>void; tracked:boolean; canReview:boolean; onQueued:()=>Promise<void>;
+}) {
   const preferencesDialog = useRef<HTMLDialogElement>(null);
   const [preferencesError, setPreferencesError] = useState("");
   const [data,setData] = useState<Screen>();
   const [error,setError] = useState("");
   const [busy,setBusy] = useState(false);
+  const [requesting, setRequesting] = useState(false);
+  const [reviewError, setReviewError] = useState("");
   const [mode, setMode] = useState<"none" | "draft" | "screen">("none");
-  const load = () => api<Screen>("/api/owner/screening").then(setData);
+  const load = useCallback((signal?: AbortSignal) => api<Screen>(
+    "/api/owner/screening" + (selected ? "?job=" + encodeURIComponent(selected) : ""), "GET", undefined, signal,
+  ).then(value => {if (!signal?.aborted) setData(value);}), [selected]);
+  const activeWork = data?.reviews.some(review => ["queued", "running", "limited"].includes(review.status)) ?? false;
   useEffect(()=>{
-    const refresh=()=>load().catch(e=>setError(e.message));
+    const controller = new AbortController();
+    const refresh=()=>load(controller.signal).catch(e=>{if (!controller.signal.aborted) setError(e.message);});
     void refresh();
-    const timer=window.setInterval(refresh,15000);
-    return ()=>window.clearInterval(timer);
-  },[]);
+    const timer=window.setInterval(refresh,activeWork ? 5000 : 15000);
+    return ()=>{controller.abort(); window.clearInterval(timer);};
+  },[load,activeWork]);
+  useEffect(() => setReviewError(""), [selected]);
+
+  const activeReview = data?.reviews.find(review => review.id === selected);
+  const pending = activeReview && ["queued", "running", "limited"].includes(activeReview.status);
+  async function requestReview() {
+    setRequesting(true);
+    setReviewError("");
+    try {
+      await api("/api/owner/jobs/" + encodeURIComponent(selected) + "/fit-review", "POST");
+      await Promise.all([load(), onQueued()]);
+    } catch (error) {setReviewError((error as Error).message);}
+    finally {setRequesting(false);}
+  }
   async function save(e:React.FormEvent<HTMLFormElement>) {
     e.preventDefault();
     const form=new FormData(e.currentTarget);
@@ -27,7 +81,8 @@ export function Screening({open, settings, editSkills, materials, codexReady, co
     setPreferencesError("");
     try {
       await api("/api/owner/screening","PUT",{auto_shortlist:form.has("auto"),draft:mode === "draft",threshold:Number(form.get("threshold")),smart:mode === "screen",prepare:mode === "screen" && (codexReady ? form.has("prepare") : data?.preferences.prepare ?? false),
-        max_experience_years:Number(form.get("experience")),reject_no_sponsorship:form.has("sponsorship"),minimum_annual_pay:Number(form.get("annualPay"))});
+        max_experience_years:Number(form.get("experience")),reject_no_sponsorship:form.has("sponsorship"),
+        exclude_export_control:form.has("exportControl"),minimum_annual_pay:Number(form.get("annualPay"))});
       await load();
       preferencesDialog.current?.close();
       setError("Preferences saved.");
@@ -52,6 +107,8 @@ export function Screening({open, settings, editSkills, materials, codexReady, co
       <fieldset><legend>Shortlist</legend>
         <label className="checkbox"><input name="auto" type="checkbox" defaultChecked={data.preferences.auto_shortlist}/> Automatically save qualifying roles</label>
         <label>Minimum score out of 100<input name="threshold" type="number" min="50" max="100" required defaultValue={data.preferences.threshold}/></label>
+        <label className="checkbox"><input name="exportControl" type="checkbox" defaultChecked={data.preferences.exclude_export_control}/>
+          Exclude ITAR/EAR U.S. Person requirements</label>
         <p className="muted">Tern scores openings using your saved searches, watchlist, and skills.</p>
       </fieldset>
       <fieldset><legend>After a role is shortlisted</legend>
@@ -76,19 +133,20 @@ export function Screening({open, settings, editSkills, materials, codexReady, co
         <button className="primary" disabled={busy}>Save preferences</button>
       </div>
       </form></dialog>
-      {!!data.reviews?.length && <section className="job-results">
-        <div className="feed-head"><h2>Screened roles</h2><span>Verdict</span></div>
-        {data.reviews.map(review => <button className="job" key={review.id} onClick={() => materials(review.id)}>
-          <BriefcaseBusiness className="job-icon" size={17} aria-hidden="true" />
-          <span className="job-copy"><strong>{review.title}</strong><span>{review.company}{review.summary && " · " + review.summary}</span>
-            {!!review.matched_skills?.length && <span>Matched skills · {review.matched_skills.join(", ")}</span>}</span>
-          <span className="row-meta">{{apply:"Apply",review:"Apply with risk",skip:"Skip"}[review.verdict]}{review.score != null && " · " + review.score + "/100"}</span>
-        </button>)}
-      </section>}
       <section className="job-results">
-        <div className="feed-head"><h2>Recommended openings</h2><span>Match</span></div>
+        <div className="feed-head"><h2>Fit reviews</h2><span>Result</span></div>
+        {!data.reviews.length && <div className="empty"><p>Open a recommendation to request your first fit review.</p></div>}
+        {data.reviews.map(review => <button className="job" key={review.id} onClick={() => open(review.id)}>
+          <BriefcaseBusiness className="job-icon" size={17} aria-hidden="true" />
+          <span className="job-copy"><strong>{review.title}</strong><span>{review.company}{review.report?.recruiter_read && " · " + review.report.recruiter_read}</span>
+            {!!review.matched_skills?.length && <span>Matched skills · {review.matched_skills.join(", ")}</span>}</span>
+          <span className="row-meta">{reviewLabel(review)}</span>
+        </button>)}
+      </section>
+      <section className="job-results">
+        <div className="feed-head"><h2>Recommended openings</h2><span>Search match</span></div>
         {!data.roles.length && <div className="empty">
-          <strong>No matching openings</strong><p>Adjust your saved searches or watchlist to see more roles from the last 30 days.</p>
+          <strong>No matching openings</strong><p>Check your saved searches, watchlist, or screening preferences.</p>
         </div>}
         {data.roles.map(role => <button key={role.id} className="job" onClick={() => open(role.id)}>
           <BriefcaseBusiness className="job-icon" size={17} aria-hidden="true" />
@@ -98,6 +156,34 @@ export function Screening({open, settings, editSkills, materials, codexReady, co
         </button>)}
       </section>
     </>}
+    {selected && <ScreeningPosting close={close}>
+      <section className="posting-content fit-review" aria-label="Fit review">
+        <div className="panel-heading">
+          <h3>Fit review</h3>
+          <button type="button" disabled={!codexReady || !canReview || requesting || !!pending} onClick={() => void requestReview()}>
+            {pending && activeReview ? reviewLabel(activeReview) : activeReview?.status === "failed" ? "Retry fit review"
+              : activeReview?.report ? "Review again" : tracked ? "Review fit" : "Save and review fit"} <AIBadge />
+          </button>
+        </div>
+        {!codexReady && <CodexHint connect={connectCodex}/>}
+        {reviewError && <p role="alert">{reviewError}</p>}
+        {activeReview?.message && <p role="status">{activeReview.message}</p>}
+        {activeReview?.report && <>
+          <p><strong>{reviewLabel(activeReview)}</strong></p>
+          {activeReview.report.recruiter_read && <p>{activeReview.report.recruiter_read}</p>}
+          {activeReview.report.engineering_fit && <p>{activeReview.report.engineering_fit}</p>}
+          {activeReview.report.assessment?.map((item, index) => <div key={index} className="requirement">
+            <strong>{item.field} · {item.classification}</strong><p>{item.requirement}</p>
+            {item.quote && <blockquote>{item.quote}</blockquote>}
+          </div>)}
+          {!!activeReview.report.interview_questions?.length && <section>
+            <h4>Interview practice</h4><ul>{activeReview.report.interview_questions.map(q=><li key={q}>{q}</li>)}</ul>
+          </section>}
+          {activeReview.report.preparation_error && <p role="status">{activeReview.report.preparation_error}</p>}
+        </>}
+      </section>
+      {posting}
+    </ScreeningPosting>}
   </section>;
 }
 

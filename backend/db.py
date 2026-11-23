@@ -4,6 +4,8 @@ import sqlite3
 from contextlib import contextmanager
 from datetime import UTC, datetime
 
+from .posting_text import requires_us_person
+
 
 def now():
     return datetime.now(UTC).isoformat()
@@ -72,6 +74,7 @@ class Database:
               requested INTEGER NOT NULL DEFAULT 0, started TEXT, finished TEXT, error TEXT);
             CREATE TABLE IF NOT EXISTS document_checks(document_id TEXT PRIMARY KEY,pages INTEGER,overfull INTEGER NOT NULL);
             CREATE TABLE IF NOT EXISTS ai_retries(task_id TEXT PRIMARY KEY,payload TEXT NOT NULL);
+            CREATE TABLE IF NOT EXISTS fit_review_tasks(task_id TEXT PRIMARY KEY);
             CREATE TABLE IF NOT EXISTS ai_tasks (
               id TEXT PRIMARY KEY, owner TEXT, application_id TEXT, status TEXT,
               result TEXT, created_at TEXT);
@@ -106,6 +109,7 @@ class Database:
         db.row_factory = sqlite3.Row
         db.create_function("regexp", 2, lambda pattern, value: bool(re.search(pattern, value, re.IGNORECASE)),
                            deterministic=True)
+        db.create_function("requires_us_person", 1, requires_us_person, deterministic=True)
         try:
             yield db
             db.commit()

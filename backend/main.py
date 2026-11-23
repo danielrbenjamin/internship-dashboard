@@ -166,17 +166,18 @@ def create_app(settings=None):
              saved_search: int | None = Query(None, ge=0), watchlist: bool = False,
              term: str = Query("", max_length=80), source: str = Query("", max_length=80),
              discipline: str = Query("", max_length=40), map_view: bool = False,
-             posted_within: int = Query(30, ge=1, le=30)):
+             posted_within: int = Query(30, ge=1, le=30), exclude_export_control: bool = False):
         if discipline and discipline not in DISCIPLINES:
             raise HTTPException(422, "Unknown discipline")
         filters = (f"-{posted_within - 1} days", discipline, DISCIPLINES.get(discipline, ""), q, q,
-                   location, source, source, term, term, term, term)
+                   location, source, source, term, term, term, term, exclude_export_control)
         sql = """FROM jobs WHERE active=1 AND posted_on BETWEEN date('now', ?) AND date('now')
                  AND (?='' OR title REGEXP ?)
                  AND (instr(lower(title),lower(?)) OR instr(lower(company),lower(?)))
                  AND instr(lower(location),lower(?))
                  AND (?='' OR source=?) AND (?='' OR instr(lower(title),lower(?))
                      OR instr(lower(description),lower(?)) OR instr(lower(term_hint),lower(?)))
+                 AND (NOT ? OR NOT requires_us_person(description))
                  ORDER BY posted_on DESC,id"""
         limit = 2500 if map_view else 100
         if saved_search is None and not watchlist:
@@ -282,8 +283,9 @@ def create_app(settings=None):
                                     (app_id, owner)),
                 "cover_letters": db.all("SELECT * FROM cover_letters WHERE application_id=? AND owner=? "
                                          "ORDER BY created_at DESC LIMIT 20", (app_id, owner)),
-                "ai": db.all("SELECT id,status,result FROM ai_tasks WHERE application_id=? AND owner=? "
-                             "ORDER BY created_at DESC LIMIT 8", (app_id, owner))}
+                "ai": db.all("""SELECT t.id,t.status,t.result,f.task_id IS NOT NULL AS fit_review FROM ai_tasks t
+                             LEFT JOIN fit_review_tasks f ON f.task_id=t.id WHERE t.application_id=? AND t.owner=?
+                             ORDER BY t.created_at DESC LIMIT 8""", (app_id, owner))}
 
     @app.put("/api/owner/jobs/{job_id}/application")
     def save_application(job_id: str, value: ApplicationUpdate, owner: Owner):
@@ -449,6 +451,40 @@ def create_app(settings=None):
             return FileResponse(path / "resume.pdf", media_type="application/pdf")
         raise HTTPException(404, "Export does not exist")
 
+    @app.post("/api/owner/jobs/{job_id}/fit-review", status_code=202)
+    def request_fit_review(job_id: str, owner: Owner):
+        job = get_job(job_id)
+        with db.connect() as conn:
+            conn.execute("BEGIN IMMEDIATE")
+            worker = conn.execute("SELECT status FROM worker_login WHERE id=1").fetchone()
+            if not worker or worker["status"] != "connected":
+                raise HTTPException(409, "Connect the Codex worker in Settings before requesting a fit review.")
+            application = conn.execute("SELECT id,posting FROM applications WHERE owner=? AND job_id=?",
+                                       (owner, job_id)).fetchone()
+            posting = json.loads(application["posting"]) if application else job
+            if not posting_markdown(posting["description"]):
+                raise HTTPException(422, "This posting does not include a job description.")
+            if application and conn.execute(
+                """SELECT 1 FROM ai_tasks WHERE owner=? AND application_id=?
+                   AND status IN ('queued','running','limited')""", (owner, application["id"]),
+            ).fetchone():
+                raise HTTPException(409, "This role already has Codex work in progress.")
+            if conn.execute("SELECT count(*) FROM ai_tasks WHERE owner=? AND status IN ('queued','running','limited')",
+                            (owner,)).fetchone()[0] >= 3:
+                raise HTTPException(429, "Wait for queued Codex tasks to finish.")
+            timestamp = now()
+            app_id = application["id"] if application else uuid.uuid4().hex
+            if not application:
+                conn.execute("""INSERT INTO applications(id,owner,job_id,status,posting,updated_at)
+                                VALUES(?,?,?,'shortlisted',?,?)""", (app_id, owner, job_id, json.dumps(job), timestamp))
+                conn.execute("INSERT INTO history(application_id,owner,event,at) VALUES(?,?,?,?)",
+                             (app_id, owner, "Saved as shortlisted", timestamp))
+            task_id = uuid.uuid4().hex
+            conn.execute("INSERT INTO ai_tasks VALUES (?,?,?,?,?,?)",
+                         (task_id, owner, app_id, "queued", '{"screen":true}', timestamp))
+            conn.execute("INSERT INTO fit_review_tasks VALUES(?)", (task_id,))
+        return {"id": task_id}
+
     @app.post("/api/owner/applications/{app_id}/ai", status_code=202)
     def enqueue(app_id: str, owner: Owner, doc_id: str | None = None, cover_letter: bool = False, source_file: str | None = None):
         application = get_application(app_id, owner)
@@ -468,9 +504,13 @@ def create_app(settings=None):
             if count >= 3:
                 raise HTTPException(429, "Wait for queued Codex tasks to finish")
             task_id = uuid.uuid4().hex
+            fit_review = not doc_id and not cover_letter
             conn.execute("INSERT INTO ai_tasks VALUES (?,?,?,?,?,?)",
                          (task_id, owner, app_id, "queued",
-                          json.dumps({"document": doc_id, "source_file": source_file, "cover_letter": cover_letter}), now()))
+                          json.dumps({"document": doc_id, "source_file": source_file, "cover_letter": cover_letter,
+                                      "screen": fit_review}), now()))
+            if fit_review:
+                conn.execute("INSERT INTO fit_review_tasks VALUES(?)", (task_id,))
         return {"id": task_id}
 
     @app.post("/api/owner/applications/{app_id}/prepare", status_code=202)

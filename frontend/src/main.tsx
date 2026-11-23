@@ -72,6 +72,7 @@ function App() {
   const [location, setLocation] = useState("");
   const [discipline, setDiscipline] = useState("");
   const [postedWithin, setPostedWithin] = useState("30");
+  const [excludeExportControl, setExcludeExportControl] = useState(false);
   const [disciplines, setDisciplines] = useState<string[]>([]);
   const [rule, setRule] = useState("");
   const [term, setTerm] = useState("");
@@ -180,6 +181,7 @@ function App() {
       try {
         const params = new URLSearchParams({q: query, location, offset: String(append ? offset : 0),
           term, discipline, source: sourceFilter, map_view: String(mode === "Map"), posted_within: postedWithin});
+        if (excludeExportControl) params.set("exclude_export_control", "true");
         if (rule === "watchlist") params.set("watchlist", "true");
         else if (rule) params.set("saved_search", rule);
         const data = await api<{jobs: Job[]; has_more: boolean; disciplines?: string[]; total?: number}>("/api/jobs?" + params, "GET", undefined, controller.signal);
@@ -207,7 +209,7 @@ function App() {
       if (mode === "Map" || offset <= 100) void load();
     }, 60000);
     return () => {controller.abort(); window.clearTimeout(timer); window.clearInterval(refreshTimer);};
-  }, [query, location, rule, term, discipline, sourceFilter, mode, view, postedWithin, profile?.searches.length]);
+  }, [query, location, rule, term, discipline, sourceFilter, mode, view, postedWithin, excludeExportControl, profile?.searches.length]);
   useEffect(() => {
     if (!sentinel.current || !more || loading || retry || view !== "Browse" || mode !== "List") return;
     const observer = new IntersectionObserver(entries => {
@@ -238,10 +240,10 @@ function App() {
   const activeSources = configured.filter(source => source.status === "current").length;
   const sourceLabel = (id: string) => coverage.find(source => source.id === id)?.label || sourceName(id);
 
-  function goTo(next: Route) {
+  function goTo(next: Route, state: {screeningPosting: true} | null = null) {
     const url = routeUrl(next);
     if (url === window.location.pathname + window.location.search) return;
-    window.history.pushState(null, "", url);
+    window.history.pushState(state, "", url);
     setRoute(next);
     setMessage("");
   }
@@ -255,6 +257,16 @@ function App() {
 
   function setSelected(job: string) {
     goTo({...route, job});
+  }
+
+  function closeScreeningPosting() {
+    if (window.history.state?.screeningPosting) {
+      window.history.back();
+      return;
+    }
+    const next: Route = {view: "Screening"};
+    window.history.replaceState(null, "", routeUrl(next));
+    setRoute(next);
   }
 
   function openPriority(target: "Replies" | "Referrals" | "Materials", id: string, company?: string) {
@@ -314,7 +326,30 @@ function App() {
   }
 
   const hasFilters = Boolean(query || location || statusFilter || (view === "Browse" &&
-    (term || discipline || sourceFilter || rule || postedWithin !== "30")));
+    (term || discipline || sourceFilter || rule || postedWithin !== "30" || excludeExportControl)));
+  const postingContent = selected && <div className="posting-content">
+    {detail?.id === selected ? <>
+      <p className="eyebrow">{detail.company}</p><h2>{detail.title}</h2>
+      <p className="muted">{detail.location || "Location unspecified"}</p>
+      <dl className="job-facts">{detail.posted_on && <div><dt>Posted</dt><dd>{formatDate(detail.posted_on + "T12:00:00")}</dd></div>}<div><dt>First seen</dt><dd>{formatDate(detail.first_seen)}</dd></div>
+        <div><dt>Last seen</dt><dd>{formatDate(detail.last_seen)}</dd></div>
+        <div><dt>Source</dt><dd>{sourceLabel(detail.source)}</dd></div>
+        {detail.term && <div><dt>Term</dt><dd>{detail.term}</dd></div>}</dl>
+      {!!detail.matched_skills?.length && <p className="muted">Matched skills · {detail.matched_skills.join(", ")}</p>}
+      {!detail.active && <p className="notice">This posting is no longer listed by its source.</p>}
+      {coverage.find(source => source.id === detail.source)?.stale &&
+        <p className="notice">The latest source check failed. Confirm this opening on the employer site.</p>}
+      <a className="button primary" target="_blank" rel="noreferrer" href={detail.url}>Original posting</a>
+      {detail.description && <section className="posting-section"><h3>Job description</h3><PostingText text={detail.description} /></section>}
+      {detail.versions && detail.versions.length > 1 && <details><summary>Posting changes</summary>
+        <PostingDiff job={detail} /></details>}
+      {owner && <div className="actions posting-actions">
+        <button onClick={()=>navigate("Referrals",{company:detail.company,team:detail.title.slice(0,120)})}>Find people at {detail.company} on LinkedIn</button>
+        {view !== "Screening" && <button onClick={() => navigate("Screening",{job:detail.id})}>Review fit</button>}
+        {profile && <button className="button primary" onClick={() => navigate("Materials",{job: detail.id})}>{currentApplication ? "Open application materials" : "Track and prepare application"}</button>}
+      </div>}
+    </> : detailError ? <p role="alert">{detailError}</p> : <p role="status">Loading posting…</p>}
+  </div>;
   return <>
     <BrandIntro />
     <div className={["layout", sidebarCollapsed && "sidebar-collapsed", expandedPane && "catalog-expanded"].filter(Boolean).join(" ")}>
@@ -339,7 +374,11 @@ function App() {
         </section> : view === "Needs" ? <NeedsYou open={openPriority}/> :
         view === "Analytics" ? <Analytics sourceName={sourceLabel} openSource={openSource}/> :
         view === "Interviews" ? <Interviews open={id=>navigate("Materials",{job:id})} openEmail={reply=>navigate("Replies",{reply})}/> :
-        view === "Background" ? <Background open={id=>navigate("Materials",{job:id})}/> : view === "Referrals" ? <Referrals apps={applications} initialCompany={referralCompany} initialTeam={referralTeam}/> : view === "Screening" ? <Screening codexReady={codexReady} connectCodex={openCodexSettings} materials={id=>navigate("Materials",{job:id})} settings={()=>navigate("Settings",{tab:"Discovery"})} editSkills={()=>navigate("Settings",{tab:"Profile"})} open={id=>navigate("Browse",{job:id})}/> :
+        view === "Background" ? <Background open={id=>navigate("Materials",{job:id})}/> : view === "Referrals" ? <Referrals apps={applications} initialCompany={referralCompany} initialTeam={referralTeam}/> : view === "Screening" ?
+          <Screening codexReady={codexReady} connectCodex={openCodexSettings} settings={()=>navigate("Settings",{tab:"Discovery"})}
+            editSkills={()=>navigate("Settings",{tab:"Profile"})} open={job=>goTo({view:"Screening",job},{screeningPosting:true})}
+            selected={selected} posting={postingContent} close={closeScreeningPosting} tracked={Boolean(currentApplication)}
+            canReview={Boolean(detail?.id === selected && (detail.description || currentApplication))} onQueued={refresh}/> :
         view === "Replies" ? <Replies notifications={deadlineNotifications} focus={focusItem} apps={applications} connect={()=>navigate("Settings",{tab:"Email inboxes"})}/> : view === "Overview" ? <Overview openPriority={openPriority} name={session?.account?.name} tasks={owner?[{label:"Ready to submit",value:applications.filter(a=>a.status==="ready").length,open:()=>{navigate("Saved");setStatusFilter("ready")}},{label:"Deadlines",value:reminders.length,open:()=>navigate("Replies")},{label:"New matches",value:unread,open:()=>navigate("Alerts")}]:[]} owner={Boolean(owner)} sourceName={sourceLabel}
           openCatalog={() => navigate("Browse")}
           openSource={openSource} /> :
@@ -351,7 +390,8 @@ function App() {
               ...applications.map(item => ({value:item.job_id, label:item.company+" · "+item.title})),
             ]} />
           </div>
-          {!selected ? <Templates settings={()=>navigate("Settings")}/> : detail?.id === selected && detail ? <Workspace key={selected} codexReady={codexReady} connectCodex={openCodexSettings} job={detail} application={currentApplication} reload={refresh} />
+          {!selected ? <Templates settings={()=>navigate("Settings")}/> : detail?.id === selected && detail ? <Workspace key={selected} codexReady={codexReady} connectCodex={openCodexSettings} job={detail} application={currentApplication} reload={refresh}
+            openFitReview={()=>navigate("Screening",{job:selected})} />
             : <p>{selected ? detailError || "Loading application…" : "Select a tracked application or open a posting from the inbox."}</p>}
         </section> : view === "Sources" ? <Coverage sources={coverage} /> : view === "Settings" ? profile ? <SettingsPanel codexStatus={codexStatus} tab={settingsTab} setTab={tab=>navigate("Settings",{tab})} profile={profile} save={async value => {
           await api("/api/owner/settings", "PUT", value); setRule(""); await refresh();
@@ -386,6 +426,7 @@ function App() {
             </div>
             {hasFilters && <button className="clear-filters" onClick={() => {
               setQuery(""); setLocation(""); setTerm(""); setDiscipline(""); setSourceFilter(""); setRule(""); setStatusFilter(""); setPostedWithin("30");
+              setExcludeExportControl(false);
             }}>Clear filters</button>}
           </div>
           {view !== "Browse" && <div className="pipeline" aria-label="Filter by application status">
@@ -410,7 +451,11 @@ function App() {
               ...configured
                 .filter(source => source.kind !== "board_index" && (!source.id.startsWith("ats:") || source.count > 0))
                 .map(source => ({value:source.id, label:sourceLabel(source.id), keywords:source.id})),
-            ]} /></>}
+            ]} />
+            <label className="checkbox"><input type="checkbox" checked={excludeExportControl} onChange={event => {
+              setExcludeExportControl(event.target.checked);
+              closeDetails();
+            }}/> Exclude ITAR/EAR U.S. Person requirements</label></>}
             {owner && view === "Browse" && <label>Feed<select value={rule} onChange={e => {setRule(e.target.value);}}>
               <option value="">All openings</option><option value="watchlist">Watchlist</option>
               {profile?.searches.map((item, index) => <option key={index} value={index}>{item.name}</option>)}
@@ -482,26 +527,7 @@ function App() {
                   <button onClick={closeDetails}>Close</button>
                 </div>
               </div>
-              <div className="posting-content">
-              {detail?.id === selected ? <>
-                <p className="eyebrow">{detail.company}</p><h2>{detail.title}</h2>
-                <p className="muted">{detail.location || "Location unspecified"}</p>
-                <dl className="job-facts">{detail.posted_on && <div><dt>Posted</dt><dd>{formatDate(detail.posted_on + "T12:00:00")}</dd></div>}<div><dt>First seen</dt><dd>{formatDate(detail.first_seen)}</dd></div>
-                  <div><dt>Last seen</dt><dd>{formatDate(detail.last_seen)}</dd></div>
-                  <div><dt>Source</dt><dd>{sourceLabel(detail.source)}</dd></div>
-                  {detail.term && <div><dt>Term</dt><dd>{detail.term}</dd></div>}</dl>
-                {!!detail.matched_skills?.length && <p className="muted">Matched skills · {detail.matched_skills.join(", ")}</p>}
-                {!detail.active && <p className="notice">This posting is no longer listed by its source.</p>}
-                {coverage.find(source => source.id === detail.source)?.stale &&
-                  <p className="notice">The latest source check failed. Confirm this opening on the employer site.</p>}
-                <a className="button primary" target="_blank" rel="noreferrer" href={detail.url}>Original posting</a>
-                {detail.description && <section className="posting-section"><h3>Job description</h3><PostingText text={detail.description} /></section>}
-                {detail.versions && detail.versions.length > 1 && <details><summary>Posting changes</summary>
-                  <PostingDiff job={detail} /></details>}
-                {owner && <div className="actions posting-actions"><button onClick={()=>navigate("Referrals",{company:detail.company,team:detail.title.slice(0,120)})}>Find people at {detail.company} on LinkedIn</button>
-                {profile && <button className="button primary" onClick={() => navigate("Materials",{job: detail.id})}>{currentApplication ? "Open application materials" : "Track and prepare application"}</button>}</div>}
-              </> : detailError ? <p role="alert">{detailError}</p> : <p role="status">Loading posting…</p>}
-              </div>
+              {postingContent}
             </section> : null}
           </div>
         </>}

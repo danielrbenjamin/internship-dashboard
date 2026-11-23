@@ -24,7 +24,7 @@ export type Application = {
 };
 export type Document = {kind?: "resume" | "cover"; entry?: string; id: string; compiled: number; commit_sha: string; created_at: string; verified?: number};
 export type CoverLetter = {id: string; content: string; created_at: string};
-export type Task = {id: string; status: string; result: string};
+export type Task = {id: string; status: string; result: string; fit_review?: number};
 export type Details = {
   posting: Job; documents: Document[]; cover_letters: CoverLetter[]; ai: Task[]; history: {event: string; at: string}[];
 };
@@ -51,8 +51,11 @@ async function request(path: string, method: string, body?: object, signal?: Abo
     body: body ? JSON.stringify(body) : method === "POST" ? "" : undefined,
   });
   if (!response.ok) {
-    const error = await response.json().catch(() => ({}));
-    throw new ApiError(response.status, typeof error.detail === "string" ? error.detail : `Request failed (${response.status})`);
+    const error = await response.json().catch(() => null);
+    const detail: unknown = error?.detail;
+    const validation = Array.isArray(detail) ? detail.map(issue => issue?.msg)
+      .filter((message): message is string => typeof message === "string").join(" ") : "";
+    throw new ApiError(response.status, (typeof detail === "string" ? detail : validation) || `Request failed (${response.status})`);
   }
   return response;
 }

@@ -1,5 +1,6 @@
 
 import gzip
+import json
 import secrets
 import time
 from datetime import UTC, datetime, timedelta
@@ -149,6 +150,8 @@ def test_source_failure_keeps_previous_result(app, monkeypatch):
 
 
 def test_synctex_persists_with_compiled_version_and_resolves_nested_sources(app, monkeypatch):
+    generate_mapping = False
+
     def fixture_repo(directory, profile, token):
         (directory / "letter").mkdir()
         (directory / "letter/main.tex").write_text("Document", encoding="utf-8")
@@ -158,6 +161,8 @@ def test_synctex_persists_with_compiled_version_and_resolves_nested_sources(app,
     def render(work, entry):
         pdf = work / entry.parent / "fixture.pdf"
         pdf.write_bytes(b"%PDF-1.4")
+        if not generate_mapping:
+            return pdf
         mapping = pdf.with_suffix(".synctex.gz")
         with gzip.open(mapping, "wb") as output:
             output.write(f"Input:1:{work / 'section.tex'}\n".encode())
@@ -182,15 +187,28 @@ def test_synctex_persists_with_compiled_version_and_resolves_nested_sources(app,
     version = owner.post("/api/owner/templates/resume", headers=ORIGIN, content=b"").json()["id"]
     endpoint = f"/api/owner/documents/{version}"
     assert owner.get(endpoint + "/sync").status_code == 404
-    assert owner.post(endpoint + "/compile", headers=ORIGIN, content=b"").json()["sync"]
-    mapping = documents.document_root(app.state.settings, version) / "resume.synctex.gz"
+    assert owner.post(endpoint + "/compile", headers=ORIGIN, content=b"").json()["sync"] is False
+
+    copy = owner.post(endpoint + "/save", headers=ORIGIN, json={"files": {}, "created": []})
+    assert copy.status_code == 200
+    upgraded = copy.json()["id"]
+    upgraded_endpoint = f"/api/owner/documents/{upgraded}"
+    assert owner.get(upgraded_endpoint + "/source").json()["parent"] == version
+    assert owner.get(upgraded_endpoint + "/tex").text == "Document"
+    generate_mapping = True
+    assert owner.post(upgraded_endpoint + "/compile", headers=ORIGIN, content=b"").json()["sync"]
+    assert owner.get(endpoint + "/sync").status_code == 404
+    assert owner.get(endpoint + "/pdf").content == b"%PDF-1.4"
+    mapping = documents.document_root(app.state.settings, upgraded) / "resume.synctex.gz"
     with gzip.open(mapping, "rt") as saved:
         assert saved.read() == "Input:1:../section.tex\n"
-    assert TestClient(app).get(endpoint + "/sync").status_code == 401
-    forward = owner.get(endpoint + "/sync", params={"name": "section.tex", "line": 4})
+    assert TestClient(app).get(upgraded_endpoint + "/sync").status_code == 401
+    forward = owner.get(upgraded_endpoint + "/sync", params={"name": "section.tex", "line": 4})
     assert forward.json() == {"page": 2, "x": 72.5, "y": 84.0}
-    assert owner.get(endpoint + "/sync", params=forward.json()).json() == {"name": "section.tex", "line": 4, "column": 1}
-    assert owner.get(endpoint + "/sync", params={"name": "../section.tex"}).status_code == 422
+    assert owner.get(upgraded_endpoint + "/sync", params=forward.json()).json() == {
+        "name": "section.tex", "line": 4, "column": 1,
+    }
+    assert owner.get(upgraded_endpoint + "/sync", params={"name": "../section.tex"}).status_code == 422
 
 
 def test_mcp_scope_and_authenticated_lookup(app, monkeypatch):
@@ -277,6 +295,90 @@ def test_shortlist_uses_only_saved_matching_criteria(app):
     role, = owner.get("/api/owner/screening").json()["roles"]
     assert role["score"] == 80
     assert "Preferred: SolidWorks" in role["reasons"]
+
+
+def test_export_control_filter_applies_to_catalog_recommendations_and_auto_shortlist(app):
+    owner = TestClient(app)
+    signed_session(app, owner, "google|owner")
+    descriptions = {
+        "restricted": "<p>This position may require access to technology subject to ITAR or EAR. Access is "
+                      "provided only to individuals who are classified as <strong>‘U.S. Persons.’</strong></p>",
+        "citizenship": "Due to ITAR, applicants must be a U.S. citizen or lawful permanent resident.",
+        "mentioned": "Work with ITAR and EAR documentation. U.S. Person status is preferred.",
+        "authorized": "Applicants must be a U.S. Person or obtain a U.S. government export license.",
+        "negated": "This position does not require U.S. Person status.",
+    }
+    import_jobs(app.state.db, "fixture", [
+        {**POSTING, "title": "Mechanical Intern", "requisition": key,
+         "url": f"https://example.com/{key}", "description": description}
+        for key, description in descriptions.items()
+    ])
+    settings = {"searches": [{"name": "Mechanical", "keywords": "mechanical"}]}
+    owner.put("/api/owner/settings", headers=ORIGIN, json=settings).raise_for_status()
+    catalog = owner.get("/api/jobs").json()
+    jobs = {role["requisition"]: role["id"] for role in catalog["jobs"]}
+    assert catalog["total"] == len(descriptions)
+    assert set(jobs) == set(descriptions)
+    allowed = {"mentioned", "authorized", "negated"}
+    for options in ({}, {"map_view": True}, {"saved_search": 0}):
+        filtered = owner.get("/api/jobs", params={**options, "exclude_export_control": True}).json()
+        assert filtered["total"] == len(allowed)
+        assert {role["requisition"] for role in filtered["jobs"]} == allowed
+        assert not filtered["has_more"]
+
+    screening = "/api/owner/screening"
+    assert owner.get(screening).json()["preferences"]["exclude_export_control"] is False
+    owner.put(screening, headers=ORIGIN, json={"exclude_export_control": True}).raise_for_status()
+    assert {role["id"] for role in owner.get(screening).json()["roles"]} == {jobs[key] for key in allowed}
+    owner.put(screening, headers=ORIGIN, json={
+        "exclude_export_control": True, "auto_shortlist": True, "threshold": 50,
+    }).raise_for_status()
+    saved = owner.get("/api/owner/applications").json()
+    assert {role["job_id"] for role in saved} == {jobs[key] for key in allowed}
+
+
+def test_fit_reviews_show_manual_and_automatic_results_in_one_place(app):
+    db = app.state.db
+    subject = "google|owner"
+    owner = TestClient(app)
+    signed_session(app, owner, subject)
+    import_jobs(db, "fixture", [
+        {**POSTING, "title": "Mechanical Intern", "requisition": key, "url": f"https://example.com/{key}"}
+        for key in ("manual", "automatic", "legacy")
+    ])
+    jobs = {job["requisition"]: job["id"] for job in owner.get("/api/jobs").json()["jobs"]}
+    endpoint = f"/api/owner/jobs/{jobs['manual']}/fit-review"
+    screening = "/api/owner/screening"
+    assert TestClient(app).post(endpoint, headers=ORIGIN, content=b"").status_code == 401
+    assert owner.post(endpoint, headers=ORIGIN, content=b"").status_code == 409
+    assert owner.get("/api/owner/applications").json() == []
+    db.execute("INSERT INTO worker_login VALUES (1,'connected','fixture')")
+    requested = owner.post(endpoint, headers=ORIGIN, content=b"")
+    assert requested.status_code == 202
+    task_id = requested.json()["id"]
+    assert owner.post(endpoint, headers=ORIGIN, content=b"").status_code == 409
+    review, = owner.get(screening).json()["reviews"]
+    assert review["id"] == jobs["manual"] and review["status"] == "queued"
+    application, = owner.get("/api/owner/applications").json()
+    assert application["status"] == "shortlisted"
+
+    report = {"verdict": "apply", "match_score": 89, "document_id": None, "cover_letter": ""}
+    db.execute("UPDATE ai_tasks SET status='done',result=? WHERE id=?", (json.dumps({**report, "screen": True}), task_id))
+    for name in ("automatic", "legacy"):
+        saved = owner.put(f"/api/owner/jobs/{jobs[name]}/application", headers=ORIGIN, json={"status": "ready"})
+        db.execute("INSERT INTO ai_tasks VALUES (?,?,?,'done',?,?)", (
+            name, subject, saved.json()["id"], json.dumps({**report, "screen": name == "automatic"}), "2026-01-01",
+        ))
+    reviews = owner.get(screening, params={"job": jobs["legacy"]}).json()["reviews"]
+    assert reviews[0]["id"] == jobs["legacy"]
+    assert {row["id"] for row in reviews} == set(jobs.values())
+    assert all(row["report"]["match_score"] == 89 for row in reviews)
+
+    retry = owner.post(endpoint, headers=ORIGIN, content=b"")
+    assert retry.status_code == 202
+    db.execute("UPDATE ai_tasks SET status='failed',result='Review stopped.' WHERE id=?", (retry.json()["id"],))
+    latest = owner.get(screening, params={"job": jobs["manual"]}).json()["reviews"][0]
+    assert latest["status"] == "failed" and latest["message"] == "Review stopped."
 
 
 def test_rank_to_application_reply_and_deadline(app):

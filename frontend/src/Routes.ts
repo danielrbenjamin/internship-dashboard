@@ -32,7 +32,7 @@ export function readRoute(): Route {
   const tab = query.get("tab") ?? "";
   return {
     view,
-    job: ["Browse", "Saved", "Applied", "Materials"].includes(view) && /^[\w-]{1,100}$/.test(job) ? job : undefined,
+    job: ["Browse", "Screening", "Saved", "Applied", "Materials"].includes(view) && /^[\w-]{1,100}$/.test(job) ? job : undefined,
     tab: view === "Settings" && ["Profile", "Discovery", "Email inboxes", "Codex"].includes(tab) ? tab : undefined,
     company: view === "Referrals" ? query.get("company")?.slice(0, 160) : undefined,
     team: view === "Referrals" ? query.get("team")?.slice(0, 120) : undefined,
